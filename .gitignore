@@ -1,0 +1,7 @@
+# Audits
+audits/*.json
+!audits/.gitkeep
+
+# Audit Run
+audit-prompt.md
+audit.log
