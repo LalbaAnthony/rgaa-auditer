@@ -212,7 +212,7 @@
             const K_PROMPT = 'promptContext';
             const OFFICIAL_BASE = 'https://accessibilite.numerique.gouv.fr/methode/criteres-et-tests/#';
             const TOAST_MS = 8000;
-            const DEFAULT_CONTEXT = [].join('\n');
+            const DEFAULT_CONTEXT = '';
             const ICON_PROMPT = '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M6 8l2.5 2L6 12M10.5 12.5H14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
             const ICON_CHECK = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 10.5l3.5 3.5L15 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
             const ICON_FAIL = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 6l8 8M14 6l-8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
@@ -624,7 +624,7 @@
                 } else if (mode === 'mixed') {
                     steps.push('Entries with status "Non-compliant" must be fixed. Entries with status "To verify" need a judgment call first: evaluate each of them against the official criterion and its tests, state your conclusion (non-compliant, compliant or not applicable) with a short justification, and apply the following steps only to those confirmed non-compliant.');
                 }
-                steps.push('Locate where the faulty markup or styles come from in the repository (components, layouts, pages, composables, CSS), ' + from + '.');
+                steps.push('Locate where the faulty markup or styles come from in the repository (templates, components, layouts, stylesheets, scripts), ' + from + '.');
                 steps.push('Before changing anything, confirm each defect in the source code and in the rendered page. If a defect cannot be reproduced, leave it and explain why.');
                 steps.push('Fix each confirmed defect as described in its expected correction (or, without one, as required by the criterion), without changing the visual design beyond what the fix requires.');
                 steps.push('Search the codebase for other occurrences of the same pattern (shared components, similar markup or classes) and fix them as well.');
@@ -1346,7 +1346,7 @@
                     openPromptSettings() { if (!this.$refs.promptSettings.open) this.$refs.promptSettings.showModal(); },
                     resetPromptContext() {
                         this.promptContext = DEFAULT_CONTEXT;
-                        this.say('Project context reset to its default value.');
+                        this.say('Project context cleared.');
                     },
                     copyFrom(btn) {
                         const e = A.byKey.get(btn.getAttribute('data-key'));
@@ -1605,8 +1605,7 @@
         style="max-width:36rem;margin:15vh auto;padding:1.25rem;font:15px/1.5 system-ui,sans-serif;border:1px solid #c8c7bf;border-radius:.75rem;background:#fff;color:#161614">
         <strong>RGAA Audit Viewer could not start.</strong><br>
         It loads Alpine.js and Tailwind CSS from cdn.jsdelivr.net: an Internet connection is required. Check the
-        connection,
-        then reload the page.
+        connection, then reload the page.
     </div>
     <script>setTimeout(function () { if (!window.__rgaaViewerReady) { var m = document.getElementById('boot-msg'); if (m) m.hidden = false; } }, 5000);</script>
     <div x-data="app" x-cloak @dragenter.window="onDragEnter($event)" @dragover.window.prevent="onDragOver($event)"
@@ -1637,12 +1636,10 @@
                         </button>
                     </div>
                     <p class="mt-2 text-sm text-ink-2">Load an RGAA audit JSON file. It is read locally; the last loaded
-                        audit is
-                        kept, compressed, in this browser's storage.</p>
+                        audit is kept, compressed, in this browser's storage.</p>
                     <template x-if="busy">
                         <p class="mt-6 rounded-lg border border-line bg-subtle p-6 text-center text-sm" role="status">
-                            Loading the
-                            audit&hellip;</p>
+                            Loading the audit&hellip;</p>
                     </template>
                     <template x-if="!busy">
                         <label for="file-initial"
@@ -1654,9 +1651,8 @@
                                 <path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />
                             </svg>
                             <span class="text-sm font-medium">Drop the JSON file here or <span
-                                    class="text-accent underline">choose a
-                                    file</span></span>
-                            <span class="text-xs text-muted">Example: audit_2026-09-27.json</span>
+                                    class="text-accent underline">choose a file</span></span>
+                            <span class="text-xs text-muted">JSON file produced by an RGAA audit</span>
                             <input id="file-initial" type="file" accept=".json,application/json" class="sr-only"
                                 @change="onFileInput($event)">
                         </label>
@@ -1666,8 +1662,7 @@
                             role="alert" x-text="error"></p>
                     </template>
                     <p class="mt-4 text-xs text-muted">Storage is tied to this HTML file's location: moving or renaming
-                        the file
-                        starts from an empty storage.</p>
+                        the file starts from an empty storage.</p>
                 </div>
             </main>
         </template>
@@ -1898,8 +1893,7 @@
                             <fieldset>
                                 <legend class="fs-title">Scope</legend>
                                 <p id="scope-hint" class="mt-1 text-xs text-muted">Number of pages where the criterion
-                                    is non-compliant
-                                    or to verify (0 to <span x-text="pageCount"></span>).</p>
+                                    is non-compliant or to verify (0 to <span x-text="pageCount"></span>).</p>
                                 <div class="mt-2 flex items-end gap-2">
                                     <label class="flex-1 text-xs text-ink-2">Min
                                         <input type="number" inputmode="numeric" class="field mt-1" min="0"
@@ -1914,8 +1908,7 @@
                                     </label>
                                 </div>
                                 <p class="mt-1 text-xs text-danger" x-show="scopeBounds().min > scopeBounds().max">Min
-                                    is greater than
-                                    max: nothing can match.</p>
+                                    is greater than max: nothing can match.</p>
                             </fieldset>
 
                             <fieldset>
@@ -2167,22 +2160,18 @@
                 <h3 class="mt-5 text-sm font-semibold">Notes</h3>
                 <ul class="mt-1 list-disc space-y-1 pl-5 text-sm text-ink-2">
                     <li>Search: every word must match, in the number, title, topic, page, finding, selectors, faulty
-                        code or
-                        expected correction.</li>
+                        code or expected correction.</li>
                     <li>Entries marked as done stay in place until the list is refreshed (filter or view change,
-                        reload); they
-                        then move to the end of their group, and fully done groups move to the end of the list.</li>
+                        reload); they then move to the end of their group, and fully done groups move to the end of the
+                        list.</li>
                     <li>The grouped action applies to every non-compliant and to-verify entry of the criterion, on all
-                        pages,
-                        whatever the filters.</li>
+                        pages, whatever the filters.</li>
                     <li>Copy prompt: Markdown prompt for a coding agent, with the project context (Prompt settings), the
-                        audit
-                        data and instructions. The all-pages prompt groups pages sharing the same faulty code and leaves
-                        out entries
-                        marked as done.</li>
+                        audit data and instructions. The all-pages prompt groups pages sharing the same faulty code and
+                        leaves out entries marked as done.</li>
                     <li>Done states are stored per audit (audit date + page audit timestamps) in this browser. Storage
-                        is tied to
-                        this HTML file's location: moving or renaming the file starts from an empty storage.</li>
+                        is tied to this HTML file's location: moving or renaming the file starts from an empty storage.
+                    </li>
                 </ul>
             </div>
         </dialog>
@@ -2203,9 +2192,11 @@
                     context&rdquo;. Saved automatically in this browser. Leave empty to omit the section.</p>
                 <textarea id="ps-context" rows="7" spellcheck="false"
                     class="field mt-2 font-mono text-[13px] leading-relaxed" x-model="promptContext"
-                    aria-describedby="ps-hint"></textarea>
+                    aria-describedby="ps-hint"
+                    placeholder="e.g. stack and frameworks, repository layout (where pages, components and styles live), conventions, lint and test commands"></textarea>
                 <div class="mt-4 flex flex-wrap justify-between gap-2">
-                    <button type="button" class="btn" @click="resetPromptContext()">Reset to default</button>
+                    <button type="button" class="btn" @click="resetPromptContext()"
+                        :disabled="!promptContext">Clear</button>
                     <form method="dialog"><button class="btn btn-primary">Done</button></form>
                 </div>
             </div>
@@ -2216,10 +2207,8 @@
             <form method="dialog" class="p-5">
                 <h2 id="purge-title" class="text-lg font-semibold">Purge all stored data?</h2>
                 <p id="purge-desc" class="mt-2 text-sm text-ink-2">This deletes the memorized audit, the done states of
-                    every
-                    audit and the preferences (theme, prompt context) stored by this viewer in this browser. It cannot
-                    be undone.
-                </p>
+                    every audit and the preferences (theme, prompt context) stored by this viewer in this browser. It
+                    cannot be undone.</p>
                 <div class="mt-5 flex justify-end gap-2">
                     <button class="btn" value="cancel" autofocus>Cancel</button>
                     <button type="button" class="btn btn-danger-solid" @click="confirmPurge()">Delete
