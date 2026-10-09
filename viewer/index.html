@@ -1,0 +1,2233 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RGAA Audit Viewer</title>
+    <script>
+        // Apply the theme before first paint: stored choice, else OS preference.
+        (function () {
+            var t = null;
+            try { t = localStorage.getItem('rgaaViewer:v1:theme'); } catch (e) { }
+            if (t !== 'light' && t !== 'dark') t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
+    <style>
+        [x-cloak] {
+            display: none !important;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.3/dist/index.global.js"></script>
+    <style type="text/tailwindcss">
+        @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+  @theme {
+    --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  }
+
+  @theme inline {
+    --color-canvas: var(--c-canvas);
+    --color-surface: var(--c-surface);
+    --color-subtle: var(--c-subtle);
+    --color-hover: var(--c-hover);
+    --color-line: var(--c-line);
+    --color-line-strong: var(--c-line-strong);
+    --color-ink: var(--c-ink);
+    --color-ink-2: var(--c-ink-2);
+    --color-muted: var(--c-muted);
+    --color-accent: var(--c-accent);
+    --color-accent-ink: var(--c-accent-ink);
+    --color-accent-soft: var(--c-accent-soft);
+    --color-danger: var(--c-danger);
+    --color-danger-soft: var(--c-danger-soft);
+  }
+
+  @layer base {
+    :root {
+      color-scheme: light;
+      --c-canvas: #f6f6f3; --c-surface: #ffffff; --c-subtle: #f0efeb; --c-hover: #ebe9e4;
+      --c-line: #e3e2dc; --c-line-strong: #8f8e87;
+      --c-ink: #161614; --c-ink-2: #34332f; --c-muted: #5d5c57;
+      --c-accent: #1d5fae; --c-accent-ink: #ffffff; --c-accent-soft: #e6eefa;
+      --c-danger: #b42318; --c-danger-soft: #fdeceb;
+      --c-code-bg: #f7f7f4; --c-mark: #ffe27a; --c-mark-ink: #161614;
+      --st-nc-bg: #fdecec; --st-nc-fg: #9b1c1c; --st-nc-bd: #f3c1c1; --st-nc-dot: #d03b3b;
+      --st-tv-bg: #fdf1d8; --st-tv-fg: #7a4800; --st-tv-bd: #eed39b; --st-tv-dot: #e39a00;
+      --st-c-bg: #e7f4e8;  --st-c-fg: #1b6a24;  --st-c-bd: #bfe0c3;  --st-c-dot: #2f9a3e;
+      --st-na-bg: #efeeea; --st-na-fg: #54534e; --st-na-bd: #d9d8d1; --st-na-dot: #8a8983;
+      --tok-tag: #8b2a8f; --tok-attr: #9a4400; --tok-val: #1c6b2b; --tok-punc: #66655f;
+      --meter-track: #d5ead8; --meter-fill: #2c8a3b;
+      --done-opacity: .72;
+    }
+    :root[data-theme=dark] {
+      color-scheme: dark;
+      --c-canvas: #121211; --c-surface: #1b1b19; --c-subtle: #252522; --c-hover: #2c2c29;
+      --c-line: #302f2c; --c-line-strong: #6e6d66;
+      --c-ink: #f2f1ec; --c-ink-2: #d9d8d1; --c-muted: #aaa99f;
+      --c-accent: #86b8f0; --c-accent-ink: #0d1b2c; --c-accent-soft: #1c2a3b;
+      --c-danger: #ff8a80; --c-danger-soft: #3a1a18;
+      --c-code-bg: #161614; --c-mark: #6b5700; --c-mark-ink: #fff6cc;
+      --st-nc-bg: #3d1717; --st-nc-fg: #ffb3b3; --st-nc-bd: #6a2828; --st-nc-dot: #e66767;
+      --st-tv-bg: #3b2a0b; --st-tv-fg: #f5cd76; --st-tv-bd: #6a4d15; --st-tv-dot: #fab219;
+      --st-c-bg: #15301b;  --st-c-fg: #9edaa7;  --st-c-bd: #285a31;  --st-c-dot: #4fb35f;
+      --st-na-bg: #2b2b28; --st-na-fg: #c9c8bf; --st-na-bd: #45443f; --st-na-dot: #898781;
+      --tok-tag: #e2a3e5; --tok-attr: #f0b26c; --tok-val: #9cd5a0; --tok-punc: #a3a298;
+      --meter-track: #233b28; --meter-fill: #4fb35f;
+    }
+    /* Dimmed (done) areas: stronger inks so text keeps >= 4.5:1 once the opacity is applied. */
+    .is-done { --c-muted: var(--c-ink-2); --st-nc-fg: #6f1111; --st-tv-fg: #553200; --c-accent: #123f78; }
+    :root[data-theme=dark] .is-done { --c-muted: var(--c-ink-2); --st-nc-fg: #ffb3b3; --st-tv-fg: #f5cd76; --c-accent: #86b8f0; }
+
+    html { background: var(--c-canvas); color: var(--c-ink); }
+    body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+    button, summary, label:has(> input[type=checkbox]), label:has(> input[type=radio]), label:has(> input[type=file]) { cursor: pointer; }
+    :focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+    input[type=checkbox] { accent-color: var(--c-accent); }
+    mark { background: var(--c-mark); color: var(--c-mark-ink); border-radius: 2px; padding: 0 1px; }
+    dialog { margin: auto; }
+    dialog::backdrop { background: rgb(0 0 0 / .5); }
+  }
+
+  @layer components {
+    .btn { @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm font-medium text-ink hover:bg-hover; }
+    .btn-primary { @apply border-transparent bg-accent text-accent-ink hover:opacity-90; }
+    .btn-danger { @apply border-danger text-danger hover:bg-danger-soft; }
+    .btn-danger-solid { @apply border-transparent bg-danger text-surface hover:opacity-90; }
+    .btn:disabled, .btn-sm:disabled { @apply cursor-not-allowed opacity-60 hover:bg-surface; }
+    .btn-icon { @apply inline-grid size-9 shrink-0 place-items-center rounded-md border border-line-strong bg-surface text-ink hover:bg-hover; }
+    .btn-sm { @apply inline-flex items-center rounded border border-line-strong bg-surface px-2 py-0.5 text-xs font-medium text-ink hover:bg-hover; }
+    .link { @apply inline-flex items-center gap-1 text-accent underline decoration-1 underline-offset-2 hover:decoration-2; }
+    .kbd { @apply inline-block min-w-[1.6em] rounded border border-line-strong bg-subtle px-1.5 py-0.5 text-center font-mono text-xs text-ink; }
+
+    .badge { @apply inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-2 py-px text-xs font-medium; }
+    .st-non_compliant { background: var(--st-nc-bg); color: var(--st-nc-fg); border-color: var(--st-nc-bd); }
+    .st-to_verify { background: var(--st-tv-bg); color: var(--st-tv-fg); border-color: var(--st-tv-bd); }
+    .st-compliant { background: var(--st-c-bg); color: var(--st-c-fg); border-color: var(--st-c-bd); }
+    .st-not_applicable, .st-other { background: var(--st-na-bg); color: var(--st-na-fg); border-color: var(--st-na-bd); }
+    .dot { @apply inline-block size-2.5 shrink-0 rounded-full; background: var(--st-na-dot); }
+    .dot-non_compliant { background: var(--st-nc-dot); }
+    .dot-to_verify { background: var(--st-tv-dot); }
+    .dot-compliant { background: var(--st-c-dot); }
+
+    .facet { @apply flex items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-hover; }
+    .facet-count { @apply ml-auto pl-2 text-xs tabular-nums text-muted; }
+    .facet-zero { @apply text-muted; }
+    .fs-title { @apply text-xs font-semibold uppercase tracking-wide text-muted; }
+    .field { @apply w-full rounded-md border border-line-strong bg-surface px-2.5 py-1.5 text-sm text-ink placeholder:text-muted; }
+
+    .seg { @apply inline-flex overflow-hidden rounded-md border border-line-strong bg-surface; }
+    .seg-item { @apply relative flex; }
+    .seg-item + .seg-item { @apply border-l border-line-strong; }
+    .seg-btn { @apply px-3 py-1.5 text-sm font-medium text-ink hover:bg-hover; }
+    .seg-item input:checked + .seg-btn { @apply bg-accent text-accent-ink; }
+    .seg-item:has(input:focus-visible) { outline: 2px solid var(--c-accent); outline-offset: 2px; z-index: 1; }
+
+    .kpi { @apply rounded-lg border border-line bg-surface px-2.5 py-1.5 sm:px-3 sm:py-2; }
+    .kpi dt { @apply flex items-center gap-1.5 text-xs text-muted; }
+    .kpi dd { @apply mt-0.5 text-lg font-semibold text-ink sm:text-xl; }
+    .meter-track { @apply h-2 w-full overflow-hidden rounded-full; background: var(--meter-track); }
+    .meter-fill { @apply h-full rounded-full; background: var(--meter-fill); }
+
+    .group { @apply overflow-hidden rounded-lg border border-line bg-surface; content-visibility: auto; contain-intrinsic-size: auto 480px; }
+    .g-head { @apply flex flex-wrap items-start gap-x-2 gap-y-1 px-3 py-2; scroll-margin-top: 4.5rem; }
+    .g-head > h3 { flex: 1 1 18rem; }
+    .group.is-done > .g-head { opacity: var(--done-opacity); }
+    .g-cb { @apply mt-1.5 size-4 shrink-0; }
+    .g-cb-spacer { @apply mt-1.5 size-4 shrink-0; }
+    .g-btn { @apply flex w-full min-w-0 items-start gap-2 rounded text-left; scroll-margin-top: 4.5rem; }
+    .g-btn .chev { @apply mt-1 size-4 shrink-0 text-muted; transform: rotate(-90deg); }
+    .g-btn[aria-expanded=true] .chev { transform: none; }
+    .g-text { @apply flex min-w-0 flex-1 flex-col; }
+    .g-titleline { @apply flex flex-wrap items-baseline gap-x-2 gap-y-0.5; }
+    .g-num { @apply font-mono text-sm font-semibold tabular-nums text-ink; }
+    .g-title { @apply text-sm font-semibold text-ink; }
+    .g-topic { @apply rounded border border-line px-1.5 text-xs text-muted; }
+    .g-path { @apply font-mono text-sm font-semibold text-ink [overflow-wrap:anywhere]; }
+    .g-meta { @apply mt-0.5 text-xs text-muted; }
+    .g-side { @apply ml-auto flex shrink-0 items-center gap-3 pt-0.5; }
+    @media (max-width: 639.98px) { .g-side { flex-basis: 100%; flex-wrap: wrap; justify-content: flex-start; row-gap: .375rem; padding-left: 3rem; } }
+    .g-bulk { @apply whitespace-nowrap text-xs text-muted; }
+
+    .rows { @apply border-t border-line; }
+    .row { @apply border-b border-line last:border-b-0; scroll-margin-top: 4.5rem; }
+    .row:focus-within { background: var(--c-subtle); }
+    .row-line { @apply flex items-start gap-2 px-3; }
+    .row-line.is-done { opacity: var(--done-opacity); }
+    .row-cb { @apply flex size-6 shrink-0 items-center justify-center pt-2; }
+    .row-cb input { @apply size-4; }
+    .row-btn { @apply flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 rounded py-2 text-left text-sm; }
+    .row-btn .chev { @apply ml-auto size-4 shrink-0 text-muted; }
+    .row-prompt { @apply mt-1.5 inline-grid size-7 shrink-0 place-items-center rounded-md text-muted hover:bg-hover hover:text-ink; }
+    .row-prompt svg { @apply size-4; }
+    .row-prompt-spacer { @apply size-7 shrink-0; }
+    .row-btn[aria-expanded=true] .chev { transform: rotate(180deg); }
+    .row-label { @apply min-w-0 max-w-full truncate text-ink; }
+    .row-path { @apply font-mono text-[13px]; }
+    .row-num { @apply mr-1.5 font-mono text-[13px] font-semibold tabular-nums; }
+    .row-excerpt { @apply order-2 block min-w-0 basis-full truncate text-muted; }
+    .row-btn .chev { order: 1; }
+    .match-in { @apply shrink-0 rounded bg-subtle px-1.5 text-xs text-ink-2; }
+    @media (min-width: 640px) {
+      .row-btn { flex-wrap: nowrap; }
+      .row-label { flex: 0 1 auto; max-width: 40%; }
+      .row-excerpt { flex: 1 1 0; order: 0; }
+      .row-btn .chev { order: 0; }
+    }
+
+    .details { @apply space-y-3 px-3 pb-3 sm:pl-11; }
+    .d-meta { @apply flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted; }
+    .d-k { @apply font-medium text-ink-2; }
+    .d-head { @apply mb-1 flex items-center justify-between gap-2; }
+    .d-h { @apply text-xs font-semibold uppercase tracking-wide text-muted; }
+    .d-text { @apply text-sm leading-relaxed text-ink [overflow-wrap:anywhere]; }
+    .sel-list { @apply space-y-1; }
+    .sel { @apply flex items-start gap-2; }
+    .sel code { @apply min-w-0 flex-1 rounded border border-line px-2 py-1 font-mono text-[12.5px] text-ink [overflow-wrap:anywhere]; background: var(--c-code-bg); }
+    .code { @apply m-0 rounded-md border border-line p-3 font-mono text-[12.5px] leading-relaxed text-ink [overflow-wrap:anywhere]; white-space: pre-wrap; background: var(--c-code-bg); }
+    .tok-tn { color: var(--tok-tag); }
+    .tok-an { color: var(--tok-attr); }
+    .tok-av { color: var(--tok-val); }
+    .tok-p, .tok-cm { color: var(--tok-punc); }
+    .tok-el { color: var(--tok-punc); font-style: italic; }
+
+    .dlg { @apply w-[min(40rem,calc(100vw-2rem))] rounded-xl border border-line bg-surface p-0 text-ink shadow-2xl; }
+    .skip-link { @apply sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-md focus:bg-surface focus:px-3 focus:py-2 focus:text-sm focus:shadow-lg; }
+  }
+</style>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.17.4/dist/cdn.min.js"></script>
+    <script>
+        (function () {
+            'use strict';
+
+            // ---------------------------------------------------------------------------
+            // Constants and small helpers
+            // ---------------------------------------------------------------------------
+            const NS = 'rgaaViewer:v1:';
+            const K_AUDIT = 'audit';
+            const K_THEME = 'theme';
+            const K_DONE = 'done:';
+            const K_PROMPT = 'promptContext';
+            const OFFICIAL_BASE = 'https://accessibilite.numerique.gouv.fr/methode/criteres-et-tests/#';
+            const TOAST_MS = 8000;
+            const DEFAULT_CONTEXT = [].join('\n');
+            const ICON_PROMPT = '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M6 8l2.5 2L6 12M10.5 12.5H14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+            const ICON_CHECK = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 10.5l3.5 3.5L15 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+            const ICON_FAIL = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 6l8 8M14 6l-8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+
+            const STATUS_META = {
+                non_compliant: 'Non-compliant',
+                to_verify: 'To verify',
+                compliant: 'Compliant',
+                not_applicable: 'Not applicable',
+            };
+            const STATUS_ORDER = Object.keys(STATUS_META);
+            const MARKABLE = new Set(['non_compliant', 'to_verify']);
+            const METHOD_META = {
+                automated: 'Automated',
+                agent_judgment: 'Agent judgment',
+                manual_required: 'Manual required',
+            };
+            const DONE_META = [
+                { value: 'not_done', label: 'Not done' },
+                { value: 'done', label: 'Done' },
+                { value: 'not_markable', label: 'Not markable' },
+            ];
+
+            const store = {
+                get(k) { try { return localStorage.getItem(NS + k); } catch (e) { return null; } },
+                set(k, v) { try { localStorage.setItem(NS + k, v); return true; } catch (e) { return false; } },
+                del(k) { try { localStorage.removeItem(NS + k); } catch (e) { } },
+                purgeAll() {
+                    try {
+                        const keys = [];
+                        for (let i = 0; i < localStorage.length; i++) {
+                            const k = localStorage.key(i);
+                            if (k && k.startsWith(NS)) keys.push(k);
+                        }
+                        keys.forEach(k => localStorage.removeItem(k));
+                    } catch (e) { }
+                },
+            };
+
+            const humanize = s => {
+                const t = String(s || 'unknown').replace(/_/g, ' ');
+                return t.charAt(0).toUpperCase() + t.slice(1);
+            };
+            const statusLabel = s => STATUS_META[s] || humanize(s);
+            const methodLabel = m => METHOD_META[m] || humanize(m);
+            const statusClass = s => (STATUS_META[s] ? 'st-' + s : 'st-other');
+            const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+            const fold = s => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+            const safeUrl = u => (/^https?:\/\//i.test(String(u || '')) ? String(u) : null);
+            const plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
+            const fmt = n => Number(n || 0).toLocaleString('en-US');
+
+            function cmpNum(a, b) {
+                const pa = String(a).split('.'), pb = String(b).split('.');
+                for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+                    const x = parseInt(pa[i], 10), y = parseInt(pb[i], 10);
+                    const nx = Number.isNaN(x) ? Infinity : x, ny = Number.isNaN(y) ? Infinity : y;
+                    if (nx !== ny) return nx < ny ? -1 : 1;
+                }
+                return String(a).localeCompare(String(b));
+            }
+
+            // cyrb53: small non-cryptographic string hash (used for the audit identity).
+            function cyrb53(str, seed = 0) {
+                let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+                for (let i = 0; i < str.length; i++) {
+                    const ch = str.charCodeAt(i);
+                    h1 = Math.imul(h1 ^ ch, 2654435761);
+                    h2 = Math.imul(h2 ^ ch, 1597334677);
+                }
+                h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+                h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+                return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+            }
+
+            // ---------------------------------------------------------------------------
+            // gzip + base64 through the browser's native CompressionStream
+            // ---------------------------------------------------------------------------
+            async function gzipToBase64(text) {
+                const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
+                const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+                let bin = '';
+                for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+                return btoa(bin);
+            }
+            async function base64ToText(b64) {
+                const bin = atob(b64);
+                const bytes = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+                return new Response(stream).text();
+            }
+
+            // ---------------------------------------------------------------------------
+            // Search: accent/case-insensitive matching with offsets mapped to the source
+            // ---------------------------------------------------------------------------
+            function foldMap(s) {
+                let out = '';
+                const map = [];
+                for (let i = 0; i < s.length; i++) {
+                    const n = fold(s[i]);
+                    for (let j = 0; j < n.length; j++) { out += n[j]; map.push(i); }
+                }
+                return { out, map };
+            }
+            function findRanges(text, terms) {
+                if (!text || !terms || !terms.length) return [];
+                const { out, map } = foldMap(text);
+                const raw = [];
+                for (const t of terms) {
+                    let i = out.indexOf(t);
+                    while (i !== -1) {
+                        raw.push([map[i], map[i + t.length - 1] + 1]);
+                        i = out.indexOf(t, i + t.length);
+                    }
+                }
+                raw.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+                const merged = [];
+                for (const r of raw) {
+                    const last = merged[merged.length - 1];
+                    if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+                    else merged.push([r[0], r[1]]);
+                }
+                return merged;
+            }
+            function hlText(text, terms) {
+                text = String(text == null ? '' : text);
+                const ranges = findRanges(text, terms);
+                if (!ranges.length) return esc(text);
+                let out = '', pos = 0;
+                for (const [s, e] of ranges) {
+                    out += esc(text.slice(pos, s)) + '<mark>' + esc(text.slice(s, e)) + '</mark>';
+                    pos = e;
+                }
+                return out + esc(text.slice(pos));
+            }
+            function parseTerms(q) {
+                return Object.freeze([...new Set(fold(q).split(/\s+/).filter(Boolean))]);
+            }
+
+            // ---------------------------------------------------------------------------
+            // Faulty code: tolerant HTML tokenizer, one line per tag, home-made colouring
+            // ---------------------------------------------------------------------------
+            const isTagStart = (src, j) => src[j] === '<' && /[A-Za-z\/!]/.test(src[j + 1] || '');
+
+            function parseUnits(src) {
+                const units = [];
+                const n = src.length;
+                let i = 0;
+                while (i < n) {
+                    if (isTagStart(src, i)) {
+                        const segs = [];
+                        const push = (k, s, e) => { if (e > s) segs.push({ k, s, e }); };
+                        let j = i + 1;
+                        const closing = src[j] === '/';
+                        if (closing) j++;
+                        push('p', i, j);
+                        let name = '';
+                        if (src[j] === '!') {
+                            let end = src.indexOf('>', j);
+                            end = end === -1 ? n : end + 1;
+                            push('cm', j, end);
+                            units.push({ type: 'tag', segs, name: '!', closing: false });
+                            i = end;
+                            continue;
+                        }
+                        const m = /^[A-Za-z][\w:.-]*/.exec(src.slice(j, j + 80));
+                        if (m) { name = m[0].toLowerCase(); push('tn', j, j + m[0].length); j += m[0].length; }
+                        while (j < n && src[j] !== '>') {
+                            const c = src[j];
+                            if (/\s/.test(c)) { let k = j; while (k < n && /\s/.test(src[k])) k++; push('ws', j, k); j = k; continue; }
+                            if (c === '/' && src[j + 1] === '>') { push('p', j, j + 1); j++; continue; }
+                            if (c === '…') { push('el', j, j + 1); j++; continue; }
+                            if (src.startsWith('...', j)) { push('el', j, j + 3); j += 3; continue; }
+                            if (c === '<') break;
+                            let k = j;
+                            while (k < n && !/[\s=>"'…<]/.test(src[k]) && !(src[k] === '/' && src[k + 1] === '>') && !src.startsWith('...', k)) k++;
+                            if (k > j) { push('an', j, k); j = k; }
+                            if (src[j] === '=') {
+                                push('p', j, j + 1); j++;
+                                if (src[j] === '"' || src[j] === "'") {
+                                    const q = src[j];
+                                    let e = src.indexOf(q, j + 1);
+                                    e = e === -1 ? n : e + 1;
+                                    push('av', j, e); j = e;
+                                } else {
+                                    let e = j;
+                                    while (e < n && !/[\s>]/.test(src[e])) e++;
+                                    push('av', j, e); j = e;
+                                }
+                            } else if (k === j) {
+                                push('p', j, j + 1); j++;
+                            }
+                        }
+                        if (src[j] === '>') { push('p', j, j + 1); j++; }
+                        units.push({ type: 'tag', segs, name, closing });
+                        i = j;
+                    } else {
+                        let j = i + 1;
+                        while (j < n && !isTagStart(src, j)) j++;
+                        const segs = [];
+                        const re = /…|\.\.\./g;
+                        let last = i, m;
+                        const chunk = src.slice(i, j);
+                        while ((m = re.exec(chunk))) {
+                            const s = i + m.index;
+                            if (s > last) segs.push({ k: 'tx', s: last, e: s });
+                            segs.push({ k: 'el', s, e: s + m[0].length });
+                            last = s + m[0].length;
+                        }
+                        if (j > last) segs.push({ k: 'tx', s: last, e: j });
+                        units.push({ type: 'text', segs, s: i, e: j });
+                        i = j;
+                    }
+                }
+                return units;
+            }
+
+            function renderCode(src, terms) {
+                src = String(src || '');
+                const ranges = findRanges(src, terms);
+                const renderSeg = seg => {
+                    const cls = seg.k === 'tx' || seg.k === 'ws' ? '' : 'tok-' + seg.k;
+                    let out = '', pos = seg.s;
+                    for (const [rs, re] of ranges) {
+                        if (re <= pos || rs >= seg.e) continue;
+                        const s = Math.max(rs, pos), e = Math.min(re, seg.e);
+                        out += esc(src.slice(pos, s)) + '<mark>' + esc(src.slice(s, e)) + '</mark>';
+                        pos = e;
+                    }
+                    out += esc(src.slice(pos, seg.e));
+                    return cls ? '<span class="' + cls + '">' + out + '</span>' : out;
+                };
+                const units = parseUnits(src);
+                const lines = [[]];
+                const newline = () => { if (lines[lines.length - 1].length) lines.push([]); };
+                let prev = null;
+                for (let u = 0; u < units.length; u++) {
+                    const U = units[u];
+                    if (U.type === 'text') {
+                        const raw = src.slice(U.s, U.e);
+                        if (!raw.trim()) {
+                            const next = units[u + 1];
+                            if (prev && prev.type === 'tag' && next && next.type === 'tag') continue;
+                        } else if (/^[\s.…]*$/.test(raw)) {
+                            newline();
+                            U.segs.filter(s => s.k === 'el').forEach((s, idx) => {
+                                if (idx) lines[lines.length - 1].push(' ');
+                                lines[lines.length - 1].push(renderSeg(s));
+                            });
+                            newline();
+                            prev = U;
+                            continue;
+                        }
+                        U.segs.forEach(s => lines[lines.length - 1].push(renderSeg(s)));
+                        prev = U;
+                        continue;
+                    }
+                    if (prev && prev.type === 'tag') {
+                        const pair = !prev.closing && U.closing && prev.name && prev.name === U.name;
+                        if (!pair) newline();
+                    }
+                    U.segs.forEach(s => lines[lines.length - 1].push(renderSeg(s)));
+                    prev = U;
+                }
+                return lines.map(l => l.join('')).filter(Boolean).join('\n');
+            }
+
+            // ---------------------------------------------------------------------------
+            // Audit parsing (non-reactive model)
+            // ---------------------------------------------------------------------------
+            function parseAudit(text) {
+                let d;
+                try { d = JSON.parse(text); } catch (e) { throw new Error('invalid JSON (' + e.message + ')'); }
+                if (!d || typeof d !== 'object' || !Array.isArray(d.pages) || !d.pages.length) {
+                    throw new Error('this file is not an RGAA audit (missing or empty "pages" array)');
+                }
+                const pages = [];
+                const seenPath = new Map();
+                d.pages.forEach((p, i) => {
+                    if (!p || typeof p !== 'object' || !Array.isArray(p.criteria)) throw new Error('page #' + (i + 1) + ' has no "criteria" array');
+                    const url = String(p.url == null ? '' : p.url);
+                    let path = url;
+                    try { const u = new URL(url); path = decodeURIComponent(u.pathname || '/') + u.search; } catch (e) { }
+                    if (!path) path = 'page-' + (i + 1);
+                    const count = (seenPath.get(path) || 0) + 1;
+                    seenPath.set(path, count);
+                    if (count > 1) path = path + ' (#' + count + ')';
+                    pages.push({ idx: i, id: String(i), url, href: safeUrl(url), path, audited_at: String(p.audited_at == null ? '' : p.audited_at) });
+                });
+
+                const cmap = new Map();
+                d.pages.forEach(p => p.criteria.forEach(c => {
+                    const num = String(c && c.number != null ? c.number : '').trim();
+                    if (num && !cmap.has(num)) cmap.set(num, { number: num, topic: String(c.topic || 'Other'), title: String(c.title || '') });
+                }));
+                const criteria = [...cmap.values()].sort((a, b) => cmpNum(a.number, b.number));
+                criteria.forEach((c, i) => { c.idx = i; });
+                const cidx = new Map(criteria.map(c => [c.number, c.idx]));
+
+                const entries = [];
+                const byKey = new Map();
+                const critMarkable = criteria.map(() => []);
+                const critPages = criteria.map(() => new Set());
+                const statusSeen = new Set(), methodSeen = new Set();
+                d.pages.forEach((p, pi) => {
+                    const page = pages[pi];
+                    const seenNum = new Set();
+                    p.criteria.forEach(c => {
+                        const num = String(c && c.number != null ? c.number : '').trim();
+                        if (!num || seenNum.has(num)) return;
+                        seenNum.add(num);
+                        const crit = criteria[cidx.get(num)];
+                        const status = String(c.status || 'unknown');
+                        const method = String(c.method || 'unknown');
+                        const e = {
+                            i: entries.length,
+                            key: page.path + '|' + num,
+                            pageIdx: pi,
+                            critIdx: crit.idx,
+                            number: num,
+                            topic: crit.topic,
+                            title: crit.title,
+                            status,
+                            method,
+                            markable: MARKABLE.has(status),
+                            finding: String(c.finding == null ? '' : c.finding),
+                            affected: Array.isArray(c.affected_elements) ? c.affected_elements.map(x => String(x)) : [],
+                            code: String(c.faulty_code == null ? '' : c.faulty_code),
+                            correction: String(c.expected_correction == null ? '' : c.expected_correction),
+                            path: page.path,
+                            url: page.url,
+                            href: page.href,
+                        };
+                        e.f = {
+                            finding: fold(e.finding),
+                            affected: fold(e.affected.join('\n')),
+                            code: fold(e.code),
+                            correction: fold(e.correction),
+                        };
+                        e.nAll = [fold(num), fold(e.title), fold(e.topic), fold(e.path), e.f.finding, e.f.affected, e.f.code, e.f.correction].join('\u0001');
+                        statusSeen.add(status);
+                        methodSeen.add(method);
+                        if (e.markable) { critMarkable[crit.idx].push(e.key); critPages[crit.idx].add(pi); }
+                        entries.push(e);
+                        byKey.set(e.key, e);
+                    });
+                });
+
+                const topics = [];
+                criteria.forEach(c => { if (!topics.includes(c.topic)) topics.push(c.topic); });
+                const statuses = STATUS_ORDER.filter(s => statusSeen.has(s)).concat([...statusSeen].filter(s => !STATUS_META[s]).sort());
+                const methods = Object.keys(METHOD_META).filter(m => methodSeen.has(m)).concat([...methodSeen].filter(m => !METHOD_META[m]).sort());
+                const date = String(d.date == null ? '' : d.date);
+                const identity = date + '|' + pages.map(p => p.audited_at).join('|');
+
+                return {
+                    meta: {
+                        date,
+                        reference: String(d.reference_framework || 'RGAA'),
+                        auditedPages: d.audited_pages != null ? d.audited_pages : pages.length,
+                        environment: d.environment && typeof d.environment === 'object' ? d.environment : null,
+                    },
+                    pages,
+                    criteria,
+                    entries,
+                    byKey,
+                    critMarkable: critMarkable.map(a => Object.freeze(a)),
+                    scope: critPages.map(s => s.size),
+                    auditId: (date || 'nodate') + '-' + cyrb53(identity).toString(36),
+                    topics: topics.map(t => ({ value: t, label: t })),
+                    statuses: statuses.map(s => ({ value: s, label: statusLabel(s) })),
+                    methods: methods.map(m => ({ value: m, label: methodLabel(m) })),
+                };
+            }
+
+            // ---------------------------------------------------------------------------
+            // Agent prompts (Markdown, English)
+            // ---------------------------------------------------------------------------
+            function mdFence(code, lang) {
+                const runs = code.match(/`+/g) || [];
+                const n = runs.reduce((m, r) => Math.max(m, r.length), 2) + 1;
+                const f = '`'.repeat(n);
+                return f + (lang || '') + '\n' + code + '\n' + f;
+            }
+            function mdInline(s) {
+                const runs = s.match(/`+/g) || [];
+                const f = '`'.repeat(runs.reduce((m, r) => Math.max(m, r.length), 0) + 1);
+                const pad = s.startsWith('`') || s.endsWith('`') ? ' ' : '';
+                return f + pad + s + pad + f;
+            }
+            const codeLang = code => (/^\s*</.test(code) ? 'html' : '');
+            function auditLine(meta) {
+                const env = meta.environment
+                    ? Object.entries(meta.environment).map(([k, v]) => k + ' ' + (typeof v === 'object' ? JSON.stringify(v) : v)).join(', ')
+                    : '';
+                return '- Audit: ' + meta.reference + (meta.date ? ', ' + meta.date : '') + (env ? ' (environment: ' + env + ')' : '');
+            }
+            // mode: 'fix' (non-compliant only), 'verify' (to verify only), 'mixed'
+            function promptSteps(mode, multi, pointers) {
+                const steps = [];
+                const from = pointers === 'none' ? 'starting from the finding'
+                    : pointers === 'some' ? 'starting from the affected elements and the faulty code when provided, otherwise from the finding'
+                        : 'starting from the affected elements and the faulty code';
+                if (mode === 'verify') {
+                    steps.push((multi ? 'These entries need' : 'This entry needs') + ' a judgment call (status: to verify). First evaluate whether ' +
+                        (multi ? 'each page really fails' : 'the page really fails') + ' the criterion, using the finding' + (pointers === 'none' ? '' : ', the affected elements') + ' and the official criterion and its tests.');
+                    steps.push('State your conclusion (non-compliant, compliant or not applicable) with a short justification. Apply the following steps only to what is confirmed non-compliant; change nothing otherwise.');
+                } else if (mode === 'mixed') {
+                    steps.push('Entries with status "Non-compliant" must be fixed. Entries with status "To verify" need a judgment call first: evaluate each of them against the official criterion and its tests, state your conclusion (non-compliant, compliant or not applicable) with a short justification, and apply the following steps only to those confirmed non-compliant.');
+                }
+                steps.push('Locate where the faulty markup or styles come from in the repository (components, layouts, pages, composables, CSS), ' + from + '.');
+                steps.push('Before changing anything, confirm each defect in the source code and in the rendered page. If a defect cannot be reproduced, leave it and explain why.');
+                steps.push('Fix each confirmed defect as described in its expected correction (or, without one, as required by the criterion), without changing the visual design beyond what the fix requires.');
+                steps.push('Search the codebase for other occurrences of the same pattern (shared components, similar markup or classes) and fix them as well.');
+                steps.push('Verify the fix: check the affected elements again in the rendered ' + (multi ? 'pages' : 'page') + ' (for instance recompute contrast ratios or test keyboard behaviour, depending on the criterion), then run the existing lint and test commands.');
+                steps.push('Do not commit: leave the changes uncommitted for review.');
+                return steps.map((t, i) => (i + 1) + '. ' + t).join('\n');
+            }
+            function promptHeader(A, num, title, context) {
+                const c = A.criteria[A.criteria.findIndex(x => x.number === num)];
+                const L = [title, '', 'Criterion ' + num + ' (' + c.topic + '): ' + c.title, 'Official criterion and tests: ' + OFFICIAL_BASE + encodeURI(num)];
+                if (context && context.trim()) L.push('', '## Project context', '', context.trim());
+                return L;
+            }
+            function buildEntryPrompt(A, e, context) {
+                const page = A.pages[e.pageIdx];
+                const isTv = e.status === 'to_verify';
+                const scope = A.scope[e.critIdx];
+                const same = e.code
+                    ? A.critMarkable[e.critIdx].map(k => A.byKey.get(k)).filter(x => x.key !== e.key && x.code === e.code).map(x => x.path)
+                    : [];
+                const L = promptHeader(A, e.number, '# ' + (isTv ? 'Evaluate' : 'Fix') + ' RGAA criterion ' + e.number + ' on ' + e.path + (isTv ? ' (fix only if confirmed)' : ''), context);
+                L.push('', '## Audit context', '');
+                L.push('- Page: ' + (e.url || e.path) + (page.audited_at ? ' (audited ' + page.audited_at + ')' : ''));
+                L.push(auditLine(A.meta));
+                L.push('- Status: ' + statusLabel(e.status) + '; detection method: ' + methodLabel(e.method).toLowerCase());
+                L.push('- Scope: non-compliant or to verify on ' + scope + '/' + A.pages.length + ' audited pages' + (scope > 1 ? '; the cause may be shared with the other pages.' : '.'));
+                if (same.length) L.push('- The same faulty code was also captured on: ' + same.join(', ') + '.');
+                if (e.finding) L.push('', '## Finding', '', e.finding);
+                if (e.affected.length) L.push('', '## Affected elements', '', ...e.affected.map(x => '- ' + mdInline(x)));
+                if (e.code) L.push('', '## Faulty code', '', 'Captured during the audit; "…" or "..." marks truncated parts.', '', mdFence(e.code, codeLang(e.code)));
+                if (e.correction) L.push('', '## Expected correction', '', e.correction);
+                L.push('', '## Instructions', '', promptSteps(isTv ? 'verify' : 'fix', false, e.code || e.affected.length ? 'all' : 'none'));
+                return L.join('\n') + '\n';
+            }
+            // done: raw done map. Entries already marked as done are left out; null when nothing is left.
+            function buildCriterionPrompt(A, ci, done, context) {
+                const c = A.criteria[ci];
+                const all = A.critMarkable[ci].map(k => A.byKey.get(k));
+                const open = all.filter(e => !done[e.key]);
+                if (!open.length) return null;
+                const excluded = all.length - open.length;
+                const nTv = open.filter(e => e.status === 'to_verify').length;
+                const nNc = open.length - nTv;
+                const mode = nTv && nNc ? 'mixed' : nTv ? 'verify' : 'fix';
+                const groups = new Map();
+                open.forEach(e => {
+                    const key = e.code ? 'c\u0001' + e.code : 'f\u0001' + e.finding + '\u0001' + e.affected.join('\n') + '\u0001' + e.correction;
+                    if (!groups.has(key)) groups.set(key, []);
+                    groups.get(key).push(e);
+                });
+                const issues = [...groups.values()].sort((a, b) => b.length - a.length || a[0].pageIdx - b[0].pageIdx);
+                const verb = mode === 'fix' ? 'Fix' : mode === 'verify' ? 'Evaluate' : 'Fix and evaluate';
+                const L = promptHeader(A, c.number, '# ' + verb + ' RGAA criterion ' + c.number + ' on all affected pages' + (mode === 'verify' ? ' (fix only if confirmed)' : ''), context);
+                L.push('', '## Audit context', '');
+                L.push(auditLine(A.meta));
+                L.push('- Scope: non-compliant or to verify on ' + A.scope[ci] + '/' + A.pages.length + ' audited pages.');
+                const parts = [];
+                if (nNc) parts.push(nNc + ' non-compliant');
+                if (nTv) parts.push(nTv + ' to verify');
+                L.push('- This prompt covers ' + plural(open.length, 'open entry', 'open entries') + ' (' + parts.join(', ') + ')' +
+                    (excluded ? '; ' + plural(excluded, 'entry', 'entries') + ' already marked as done in the audit viewer ' + (excluded === 1 ? 'is' : 'are') + ' left out.' : '.'));
+                L.push('- Entries sharing the same faulty code (or, without code, the same finding) are grouped into one issue: ' + plural(issues.length, 'issue', 'issues') + ' below.');
+                L.push('', '## Issues');
+                issues.forEach((E, i) => {
+                    const n = E.length;
+                    const hasCode = !!E[0].code;
+                    const head = hasCode
+                        ? (n > 1 ? 'identical faulty code on ' + n + ' pages' : E[0].path)
+                        : (n > 1 ? 'identical finding on ' + n + ' pages' : E[0].path) + ', no faulty code captured';
+                    L.push('', '### Issue ' + (i + 1) + ': ' + head, '', 'Pages:');
+                    E.forEach(e => L.push('- ' + (e.url || e.path) + ' (' + statusLabel(e.status) + ', ' + methodLabel(e.method).toLowerCase() + ')'));
+                    if (hasCode) L.push('', 'Faulty code, captured during the audit ("…" or "..." marks truncated parts):', '', mdFence(E[0].code, codeLang(E[0].code)));
+                    const same = f => E.every(e => f(e) === f(E[0]));
+                    const sharedSel = same(e => e.affected.join('\n'));
+                    const sharedFinding = same(e => e.finding);
+                    const sharedFix = same(e => e.correction);
+                    const suffix = n > 1 ? ' (same on every page of this issue)' : '';
+                    if (sharedSel && E[0].affected.length) L.push('', 'Affected elements' + suffix + ':', '', ...E[0].affected.map(x => '- ' + mdInline(x)));
+                    if (sharedFinding && E[0].finding) L.push('', 'Finding' + suffix + ':', '', E[0].finding);
+                    if (sharedFix && E[0].correction) L.push('', 'Expected correction' + suffix + ':', '', E[0].correction);
+                    if (!sharedSel || !sharedFinding || !sharedFix) {
+                        L.push('', 'Page-specific details:');
+                        E.forEach(e => {
+                            const d = [];
+                            if (!sharedSel && e.affected.length) d.push('- Affected elements: ' + e.affected.map(x => mdInline(x)).join(', '));
+                            if (!sharedFinding && e.finding) d.push('- Finding: ' + e.finding);
+                            if (!sharedFix && e.correction) d.push('- Expected correction: ' + e.correction);
+                            L.push('', '#### ' + e.path, '', ...(d.length ? d : ['- No additional detail.']));
+                        });
+                    }
+                });
+                const withPointers = open.filter(e => e.code || e.affected.length).length;
+                const pointers = withPointers === open.length ? 'all' : withPointers ? 'some' : 'none';
+                L.push('', '## Instructions', '', 'Issues spanning several pages usually come from a shared component or layout: fix them once, at the source.', '', promptSteps(mode, true, pointers));
+                return L.join('\n') + '\n';
+            }
+
+            // ---------------------------------------------------------------------------
+            // Alpine component
+            // ---------------------------------------------------------------------------
+            let A = null;              // parsed audit (kept outside Alpine's reactivity)
+            const R = {                // non-reactive runtime state
+                sig: null, F: null, base: null, view: 'criterion', expanded: {}, gen: 0,
+                toastTimer: null, toastLeft: 0, toastStart: 0, toastPaused: false, toastReturn: null,
+                mqDark: null, mqMobile: null,
+            };
+
+            document.addEventListener('alpine:init', () => {
+                window.Alpine.data('app', () => ({
+                    busy: false,
+                    loaded: false,
+                    error: '',
+                    warn: '',
+                    dragging: false,
+                    dragDepth: 0,
+
+                    fileName: '',
+                    meta: {},
+                    pageCount: 0,
+                    statusList: [],
+                    doneList: DONE_META,
+                    topicList: [],
+                    methodList: [],
+                    pageList: [],
+
+                    view: 'criterion',
+                    filters: { q: '', status: [], done: [], topic: [], method: [], pages: [], scopeMin: 0, scopeMax: 0 },
+                    done: {},
+                    collapsed: {},
+                    rowTick: 0,
+                    level: 1,
+
+                    groups: [],
+                    terms: [],
+                    snap: { total: 0, byStatus: {}, markable: 0, groups: 0 },
+                    stats: { status: {}, done: {}, topic: {}, method: {}, pages: {}, doneShown: 0 },
+
+                    theme: document.documentElement.getAttribute('data-theme') || 'light',
+                    drawer: false,
+                    isMobile: false,
+                    toast: null,
+                    live: '',
+                    promptContext: DEFAULT_CONTEXT,
+                    promptFlash: '',
+
+                    // ---- lifecycle -------------------------------------------------------
+                    async init() {
+                        window.__rgaaViewerReady = true;
+                        const boot = document.getElementById('boot-msg');
+                        if (boot) boot.remove();
+                        R.mqDark = window.matchMedia('(prefers-color-scheme: dark)');
+                        R.mqDark.addEventListener('change', e => {
+                            if (!store.get(K_THEME)) this.applyTheme(e.matches ? 'dark' : 'light', false);
+                        });
+                        R.mqMobile = window.matchMedia('(max-width: 767.98px)');
+                        this.isMobile = R.mqMobile.matches;
+                        R.mqMobile.addEventListener('change', e => {
+                            this.isMobile = e.matches;
+                            if (!e.matches) this.drawer = false;
+                        });
+                        window.addEventListener('keydown', e => this.onKey(e));
+
+                        const storedContext = store.get(K_PROMPT);
+                        this.promptContext = storedContext === null ? DEFAULT_CONTEXT : storedContext;
+                        this.$watch('promptContext', v => { if (v === DEFAULT_CONTEXT) store.del(K_PROMPT); else store.set(K_PROMPT, v); });
+
+                        this.$watch('filters', () => this.refresh());
+                        this.$watch('view', () => this.refresh());
+
+                        const memo = store.get(K_AUDIT);
+                        if (memo) {
+                            this.busy = true;
+                            try {
+                                const m = JSON.parse(memo);
+                                const text = await base64ToText(m.gz);
+                                this.useAudit(text, m.name || 'memorized audit');
+                            } catch (e) {
+                                store.del(K_AUDIT);
+                                this.error = 'The memorized audit could not be restored (' + e.message + '). Load the JSON file again.';
+                            }
+                            this.busy = false;
+                        }
+                    },
+
+                    // ---- loading -----------------------------------------------------------
+                    async onFileInput(ev) {
+                        const file = ev.target.files && ev.target.files[0];
+                        ev.target.value = '';
+                        if (file) await this.loadFile(file);
+                    },
+                    async loadFile(file) {
+                        this.busy = true;
+                        this.error = '';
+                        let text;
+                        try {
+                            text = await file.text();
+                            this.useAudit(text, file.name);
+                        } catch (e) {
+                            this.error = 'Could not load "' + file.name + '": ' + e.message + '.';
+                            this.busy = false;
+                            return;
+                        }
+                        this.warn = '';
+                        try {
+                            const gz = await gzipToBase64(text);
+                            const ok = store.set(K_AUDIT, JSON.stringify({ v: 1, name: file.name, savedAt: new Date().toISOString(), gz }));
+                            if (!ok) throw new Error('quota');
+                        } catch (e) {
+                            store.del(K_AUDIT);
+                            this.warn = 'This audit could not be memorized in the browser storage: it will have to be loaded again next time.';
+                        }
+                        this.busy = false;
+                        this.say('Audit loaded: ' + this.fileName);
+                    },
+                    useAudit(text, name) {
+                        const parsed = parseAudit(text);
+                        A = parsed;
+                        R.sig = null;
+                        R.gen++;
+                        this.meta = parsed.meta;
+                        this.fileName = name;
+                        this.pageCount = parsed.pages.length;
+                        this.statusList = parsed.statuses;
+                        this.topicList = parsed.topics;
+                        this.methodList = parsed.methods;
+                        this.pageList = parsed.pages.map(p => ({ id: p.id, idx: p.idx, path: p.path, url: p.url }));
+                        this.done = this.readDone();
+                        R.expanded = {};
+                        this.collapsed = {};
+                        this.level = 1;
+                        this.dismissToast();
+                        this.filters = this.defaultFilters();
+                        this.view = 'criterion';
+                        this.loaded = true;
+                        this.refresh(true);
+                    },
+                    readDone() {
+                        const out = {};
+                        try {
+                            const list = JSON.parse(store.get(K_DONE + A.auditId) || '[]');
+                            if (Array.isArray(list)) list.forEach(k => { const e = A.byKey.get(k); if (e && e.markable) out[k] = true; });
+                        } catch (e) { }
+                        return out;
+                    },
+                    saveDone() {
+                        if (A) store.set(K_DONE + A.auditId, JSON.stringify(Object.keys(this.done)));
+                    },
+
+                    // ---- drag and drop -----------------------------------------------------
+                    hasFiles(ev) { return !!(ev.dataTransfer && [...ev.dataTransfer.types].includes('Files')); },
+                    onDragEnter(ev) { if (!this.hasFiles(ev)) return; this.dragDepth++; this.dragging = true; },
+                    onDragOver(ev) { if (this.hasFiles(ev)) ev.dataTransfer.dropEffect = 'copy'; },
+                    onDragLeave(ev) { if (!this.hasFiles(ev)) return; this.dragDepth = Math.max(0, this.dragDepth - 1); if (!this.dragDepth) this.dragging = false; },
+                    onDrop(ev) {
+                        this.dragDepth = 0;
+                        this.dragging = false;
+                        const file = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+                        if (file) this.loadFile(file);
+                    },
+
+                    // ---- filters -----------------------------------------------------------
+                    defaultFilters() {
+                        const statuses = A.statuses.map(s => s.value);
+                        const markable = statuses.filter(s => MARKABLE.has(s));
+                        return {
+                            q: '',
+                            status: markable.length ? markable : statuses,
+                            done: DONE_META.map(d => d.value),
+                            topic: A.topics.map(t => t.value),
+                            method: A.methods.map(m => m.value),
+                            pages: A.pages.map(p => p.id),
+                            scopeMin: 0,
+                            scopeMax: A.pages.length,
+                        };
+                    },
+                    resetFilters() { if (A) this.filters = this.defaultFilters(); },
+                    allValues(dim) {
+                        if (dim === 'status') return this.statusList.map(s => s.value);
+                        if (dim === 'done') return DONE_META.map(d => d.value);
+                        if (dim === 'topic') return this.topicList.map(t => t.value);
+                        if (dim === 'method') return this.methodList.map(m => m.value);
+                        if (dim === 'pages') return this.pageList.map(p => p.id);
+                        return [];
+                    },
+                    setAll(dim, on) { this.filters[dim] = on ? this.allValues(dim) : []; },
+                    facet(dim, value) { const t = this.stats[dim]; return (t && t[value]) || 0; },
+                    get activeFilterCount() {
+                        if (!A) return 0;
+                        const d = this.defaultFilters(), f = this.filters;
+                        let n = 0;
+                        ['status', 'done', 'topic', 'method', 'pages'].forEach(k => {
+                            if (f[k].length !== d[k].length || f[k].some(v => !d[k].includes(v))) n++;
+                        });
+                        if (String(f.q).trim()) n++;
+                        if (this.scopeBounds().min !== 0 || this.scopeBounds().max !== A.pages.length) n++;
+                        return n;
+                    },
+                    scopeBounds() {
+                        const n = A ? A.pages.length : 0;
+                        const rawMin = this.filters.scopeMin, rawMax = this.filters.scopeMax;
+                        const min = rawMin === '' || rawMin == null || Number.isNaN(Number(rawMin)) ? 0 : Number(rawMin);
+                        const max = rawMax === '' || rawMax == null || Number.isNaN(Number(rawMax)) ? n : Number(rawMax);
+                        return { min, max };
+                    },
+                    compileFilters() {
+                        const f = this.filters;
+                        const { min, max } = this.scopeBounds();
+                        return {
+                            status: new Set(f.status),
+                            done: new Set(f.done),
+                            topic: new Set(f.topic),
+                            method: new Set(f.method),
+                            pages: new Set(f.pages.map(Number)),
+                            min, max,
+                            terms: parseTerms(f.q),
+                        };
+                    },
+
+                    // ---- list snapshot (re-sorted only on filter/view change or reload) -------
+                    refresh(force) {
+                        if (!A) return;
+                        const sig = JSON.stringify([this.view, this.filters]);
+                        if (!force && sig === R.sig) return;
+                        R.sig = sig;
+                        const F = this.compileFilters();
+                        R.F = F;
+                        const base = new Uint8Array(A.entries.length);
+                        for (const e of A.entries) {
+                            const sc = A.scope[e.critIdx];
+                            if (sc < F.min || sc > F.max) continue;
+                            if (F.terms.length && !F.terms.every(t => e.nAll.includes(t))) continue;
+                            base[e.i] = 1;
+                        }
+                        R.base = base;
+
+                        const done = this.done;
+                        const isCrit = this.view === 'criterion';
+                        R.view = this.view;
+                        const buckets = new Map();
+                        const byStatus = {};
+                        let total = 0, markable = 0;
+                        for (const e of A.entries) {
+                            if (!base[e.i]) continue;
+                            const dv = e.markable ? (done[e.key] ? 'done' : 'not_done') : 'not_markable';
+                            if (!F.status.has(e.status) || !F.topic.has(e.topic) || !F.method.has(e.method) || !F.pages.has(e.pageIdx) || !F.done.has(dv)) continue;
+                            const gk = isCrit ? e.critIdx : e.pageIdx;
+                            let b = buckets.get(gk);
+                            if (!b) buckets.set(gk, (b = []));
+                            b.push(e);
+                            total++;
+                            byStatus[e.status] = (byStatus[e.status] || 0) + 1;
+                            if (e.markable) markable++;
+                        }
+                        const order = isCrit ? A.criteria.map(c => c.idx) : A.pages.map(p => p.idx);
+                        const open = [], finished = [];
+                        for (const gk of order) {
+                            const list = buckets.get(gk);
+                            if (!list) continue;
+                            if (!isCrit) list.sort((a, b) => a.critIdx - b.critIdx);
+                            const pending = [], closed = [], mkeys = [], counts = {};
+                            let mk = 0, md = 0;
+                            for (const e of list) {
+                                counts[e.status] = (counts[e.status] || 0) + 1;
+                                const isDone = e.markable && !!done[e.key];
+                                if (e.markable) { mk++; mkeys.push(e.key); if (isDone) md++; }
+                                (isDone ? closed : pending).push(e.key);
+                            }
+                            const g = Object.freeze({
+                                id: (isCrit ? 'c' : 'p') + gk + '-' + R.gen,
+                                kind: isCrit ? 'c' : 'p',
+                                ref: gk,
+                                keys: Object.freeze(pending.concat(closed)),
+                                mkeys: Object.freeze(mkeys),
+                                counts: Object.freeze(counts),
+                            });
+                            (mk > 0 && md === mk ? finished : open).push(g);
+                        }
+                        // Only replace the terms when they differ: every row's markup depends on them.
+                        if (F.terms.join('\u0000') !== this.terms.join('\u0000')) this.terms = F.terms;
+                        this.groups = Object.freeze(open.concat(finished));
+                        this.snap = Object.freeze({ total, byStatus: Object.freeze(byStatus), markable, groups: this.groups.length });
+                        this.recount();
+                        this.say(plural(total, 'entry', 'entries') + ' in ' + plural(this.groups.length, isCrit ? 'criterion' : 'page', isCrit ? 'criteria' : 'pages'));
+                    },
+                    // Live counters: facets and done progress (the list order itself stays put).
+                    recount() {
+                        if (!A || !R.F) return;
+                        const F = R.F, base = R.base, done = this.done;
+                        const fs = {}, fd = {}, ft = {}, fm = {}, fp = {};
+                        const inc = (o, k) => { o[k] = (o[k] || 0) + 1; };
+                        for (const e of A.entries) {
+                            if (!base[e.i]) continue;
+                            const dv = e.markable ? (done[e.key] ? 'done' : 'not_done') : 'not_markable';
+                            const a = F.status.has(e.status), b = F.done.has(dv), c = F.topic.has(e.topic), d = F.method.has(e.method), p = F.pages.has(e.pageIdx);
+                            const fails = (!a) + (!b) + (!c) + (!d) + (!p);
+                            if (fails === 0) { inc(fs, e.status); inc(fd, dv); inc(ft, e.topic); inc(fm, e.method); inc(fp, e.pageIdx); }
+                            else if (fails === 1) {
+                                if (!a) inc(fs, e.status);
+                                else if (!b) inc(fd, dv);
+                                else if (!c) inc(ft, e.topic);
+                                else if (!d) inc(fm, e.method);
+                                else inc(fp, e.pageIdx);
+                            }
+                        }
+                        let doneShown = 0;
+                        for (const g of this.groups) for (const k of g.mkeys) if (done[k]) doneShown++;
+                        this.stats = Object.freeze({ status: fs, done: fd, topic: ft, method: fm, pages: fp, doneShown });
+                    },
+
+                    // ---- done state -----------------------------------------------------------
+                    setDone(k, v) { if (v) this.done[k] = true; else delete this.done[k]; },
+                    toggleDone(k, v) {
+                        const e = A && A.byKey.get(k);
+                        if (!e || !e.markable) return;
+                        this.setDone(k, v === undefined ? !this.done[k] : !!v);
+                        this.saveDone();
+                        this.recount();
+                        this.syncRows([k]);
+                    },
+                    bulkInfo(ci, raw) {
+                        const keys = A ? A.critMarkable[ci] : [];
+                        const done = raw ? window.Alpine.raw(this.done) : this.done;
+                        let d = 0;
+                        for (const k of keys) if (done[k]) d++;
+                        return { d, n: keys.length };
+                    },
+                    syncBulk(el, ci) {
+                        const { d, n } = this.bulkInfo(ci);
+                        el.checked = n > 0 && d === n;
+                        el.indeterminate = d > 0 && d < n;
+                    },
+                    bulkText(ci) { const { d, n } = this.bulkInfo(ci); return 'All pages: ' + d + '/' + n + ' done'; },
+                    bulkAria(ci) {
+                        const { d, n } = this.bulkInfo(ci);
+                        const num = A.criteria[ci].number;
+                        return (d === n ? 'Unmark criterion ' + num + ' on all pages' : 'Mark criterion ' + num + ' as done on all pages') + ' (' + d + ' of ' + n + ' done)';
+                    },
+                    bulkBtnText(ci, raw) {
+                        const { d, n } = this.bulkInfo(ci, raw);
+                        const num = A.criteria[ci].number;
+                        return (d === n ? 'Unmark ' + num + ' on all pages' : 'Mark ' + num + ' done on all pages') + ' (' + d + '/' + n + ')';
+                    },
+                    toggleCriterion(ci) {
+                        if (!A) return;
+                        const keys = A.critMarkable[ci];
+                        if (!keys || !keys.length) return;
+                        const { d, n } = this.bulkInfo(ci);
+                        const target = d !== n;
+                        const prev = {};
+                        keys.forEach(k => { prev[k] = !!this.done[k]; });
+                        keys.forEach(k => this.setDone(k, target));
+                        this.saveDone();
+                        this.recount();
+                        this.syncRows(keys);
+                        const num = A.criteria[ci].number;
+                        this.showToast('Criterion ' + num + ': ' + plural(n, 'entry', 'entries') + (target ? ' marked as done' : ' unmarked') + ' on all pages.', prev);
+                    },
+
+                    // ---- toast with undo --------------------------------------------------------
+                    showToast(msg, prev) {
+                        clearTimeout(R.toastTimer);
+                        R.toastReturn = document.activeElement;
+                        R.toastPaused = false;
+                        R.toastLeft = TOAST_MS;
+                        R.toastStart = Date.now();
+                        this.toast = { id: Date.now(), msg, prev };
+                        R.toastTimer = setTimeout(() => this.expireToast(), TOAST_MS);
+                    },
+                    expireToast() {
+                        const hadFocus = this.$refs.toastBox && this.$refs.toastBox.contains(document.activeElement);
+                        this.toast = null;
+                        if (hadFocus) this.restoreFocus();
+                    },
+                    pauseToast() {
+                        if (!this.toast || R.toastPaused) return;
+                        clearTimeout(R.toastTimer);
+                        R.toastLeft = Math.max(0, R.toastLeft - (Date.now() - R.toastStart));
+                        R.toastPaused = true;
+                    },
+                    resumeToast() {
+                        if (!this.toast || !R.toastPaused) return;
+                        R.toastPaused = false;
+                        R.toastStart = Date.now();
+                        R.toastTimer = setTimeout(() => this.expireToast(), Math.max(2000, R.toastLeft));
+                    },
+                    undo() {
+                        const t = this.toast;
+                        if (!t) return;
+                        Object.entries(t.prev).forEach(([k, v]) => this.setDone(k, v));
+                        this.saveDone();
+                        this.recount();
+                        this.syncRows(Object.keys(t.prev));
+                        this.dismissToast(true);
+                        this.say('Undone.');
+                    },
+                    dismissToast(restore) {
+                        clearTimeout(R.toastTimer);
+                        R.toastPaused = false;
+                        const hadFocus = restore || (this.$refs.toastBox && this.$refs.toastBox.contains(document.activeElement));
+                        this.toast = null;
+                        if (hadFocus) this.restoreFocus();
+                    },
+                    restoreFocus() {
+                        const el = R.toastReturn;
+                        R.toastReturn = null;
+                        if (el && document.contains(el) && typeof el.focus === 'function') el.focus({ preventScroll: true });
+                    },
+
+                    // ---- expand / collapse -------------------------------------------------------
+                    toggleGroup(id) { if (this.collapsed[id]) delete this.collapsed[id]; else this.collapsed[id] = true; },
+                    toggleEntry(k) {
+                        const open = !R.expanded[k];
+                        if (open) R.expanded[k] = true; else delete R.expanded[k];
+                        this.rowNodes(k).forEach(el => {
+                            if (el.classList.contains('js-entry-btn')) el.setAttribute('aria-expanded', open ? 'true' : 'false');
+                            if (el.classList.contains('row-line')) {
+                                const host = el.parentElement;
+                                const cur = host.querySelector(':scope > .details');
+                                if (open && !cur) host.insertAdjacentHTML('beforeend', this.detailsHtml(k));
+                                if (!open && cur) cur.remove();
+                            }
+                        });
+                    },
+                    setLevel(level) {
+                        const l = Math.max(0, Math.min(2, level));
+                        const focusKey = this.activeKey();
+                        const focusGroup = document.activeElement && document.activeElement.closest ? document.activeElement.closest('#results section.group') : null;
+                        if (l === 0) {
+                            const c = {};
+                            this.groups.forEach(g => { c[g.id] = true; });
+                            this.collapsed = c;
+                            R.expanded = {};
+                        } else if (l === 1) {
+                            this.collapsed = {};
+                            R.expanded = {};
+                        } else {
+                            const x = {};
+                            this.groups.forEach(g => g.keys.forEach(k => { x[k] = true; }));
+                            this.collapsed = {};
+                            R.expanded = x;
+                        }
+                        this.level = l;
+                        this.rowTick++;
+                        this.$nextTick(() => {
+                            const btn = focusKey && document.querySelector('#results .js-entry-btn[data-key="' + CSS.escape(focusKey) + '"]');
+                            if (btn) { btn.focus({ preventScroll: true }); return; }
+                            const head = focusGroup && document.contains(focusGroup) && focusGroup.querySelector('.js-group-btn');
+                            if (head && focusKey) this.focusEl(head);
+                        });
+                        this.say(['Groups collapsed.', 'Groups expanded, entries collapsed.', 'All entries expanded.'][l]);
+                    },
+
+                    // ---- rendering helpers ----------------------------------------------------------
+                    hasBulk(g) { return g.kind === 'c' && !!A && A.critMarkable[g.ref].length > 0; },
+                    hl(s) { return hlText(s, this.terms); },
+                    codeHtml(s) { return renderCode(s, this.terms); },
+                    badge(status) { return '<span class="badge ' + statusClass(status) + '">' + esc(statusLabel(status)) + '</span>'; },
+                    methodLabel(m) { return methodLabel(m); },
+                    fmt(n) { return fmt(n); },
+                    officialUrl(ci) { return OFFICIAL_BASE + encodeURI(A.criteria[ci].number); },
+                    scopeText(ci) { return A.scope[ci] + '/' + A.pages.length + ' pages'; },
+                    rowHtml(k) {
+                        // Tracked: terms only. The view comes from R.view (rows are rebuilt on a view switch anyway);
+                        // done / expanded are read raw and synced imperatively (see syncRows).
+                        const e = A.byKey.get(k);
+                        const t = this.terms;
+                        void this.rowTick;
+                        const isCrit = R.view === 'criterion';
+                        const rawDone = window.Alpine.raw(this.done);
+                        const rawExp = R.expanded;
+                        const isDone = e.markable && !!rawDone[k];
+                        const ek = esc(k);
+                        const label = isCrit
+                            ? '<span class="row-label row-path" title="' + esc(e.path) + '">' + hlText(e.path, t) + '</span>'
+                            : '<span class="row-label" title="' + esc(e.number + ' ' + e.title) + '"><span class="row-num">' + hlText(e.number, t) + '</span>' + hlText(e.title, t) + '</span>';
+                        let excerpt = e.finding, prefix = '', matchIn = '';
+                        if (t.length) {
+                            const r = findRanges(e.finding, t);
+                            if (r.length) {
+                                const start = r[0][0];
+                                if (start > 48) {
+                                    const cut = e.finding.lastIndexOf(' ', start - 24);
+                                    excerpt = e.finding.slice(cut > 0 ? cut + 1 : start - 24);
+                                    prefix = '… ';
+                                }
+                            } else {
+                                const where = [];
+                                if (t.some(x => e.f.affected.includes(x))) where.push('selectors');
+                                if (t.some(x => e.f.code.includes(x))) where.push('code');
+                                if (t.some(x => e.f.correction.includes(x))) where.push('correction');
+                                if (where.length) matchIn = '<span class="match-in">match in: ' + where.join(', ') + '</span>';
+                            }
+                        }
+                        if (excerpt.length > 320) excerpt = excerpt.slice(0, 320);
+                        const body = excerpt ? prefix + hlText(excerpt, t) : '<span class="italic">No finding</span>';
+                        const cb = e.markable
+                            ? '<input type="checkbox" class="js-done" data-key="' + ek + '"' + (isDone ? ' checked' : '') + ' aria-label="' + esc(this.doneAria(k)) + '">'
+                            : '';
+                        return '<div class="row-line' + (isDone ? ' is-done' : '') + '" data-key="' + ek + '">' +
+                            '<div class="row-cb">' + cb + '</div>' +
+                            '<button type="button" class="js-entry-btn row-btn" data-key="' + ek + '" aria-expanded="' + (rawExp[k] ? 'true' : 'false') + '">' +
+                            label + this.badge(e.status) + matchIn +
+                            '<span class="row-excerpt">' + body + '</span>' +
+                            '<svg class="chev" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 8l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+                            '</button>' +
+                            (e.markable
+                                ? '<button type="button" class="js-prompt row-prompt" data-key="' + ek + '" aria-label="' + esc('Copy prompt: criterion ' + e.number + ' on ' + e.path) + '" title="Copy prompt">' + ICON_PROMPT + '</button>'
+                                : '<span class="row-prompt-spacer" aria-hidden="true"></span>') +
+                            '</div>' + (rawExp[k] ? this.detailsHtml(k) : '');
+                    },
+                    detailsHtml(k) {
+                        const e = A.byKey.get(k);
+                        const t = this.terms;
+                        const ek = esc(k);
+                        const ext = '<svg class="size-3.5" viewBox="0 0 20 20" aria-hidden="true"><path d="M11 3h6v6M17 3l-8 8M8 5H4v11h11v-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+                        const copyBtn = (kind, idx, label, aria) =>
+                            '<button type="button" class="btn-sm js-copy" data-key="' + ek + '" data-kind="' + kind + '" data-idx="' + idx + '" data-label="' + esc(label) + '" aria-label="' + esc(aria) + '">' + esc(label) + '</button>';
+                        let h = '<div class="details">';
+                        h += '<div class="d-meta">' +
+                            '<span><span class="d-k">Method</span> ' + esc(methodLabel(e.method)) + '</span>' +
+                            '<span><span class="d-k">Topic</span> ' + esc(e.topic) + '</span>' +
+                            (R.view === 'page' ? '<span><span class="d-k">Scope</span> ' + esc(this.scopeText(e.critIdx)) + '</span>' : '') +
+                            (e.href ? '<a class="link" href="' + esc(e.href) + '" target="_blank" rel="noopener noreferrer" aria-label="Open ' + esc(e.url) + ' (opens in a new tab)"><span class="font-mono">' + esc(e.path) + '</span>' + ext + '</a>' : '') +
+                            '<a class="link" href="' + esc(this.officialUrl(e.critIdx)) + '" target="_blank" rel="noopener noreferrer" aria-label="RGAA criterion ' + esc(e.number) + ' on accessibilite.numerique.gouv.fr (opens in a new tab)">RGAA ' + esc(e.number) + ext + '</a>' +
+                            '</div>';
+                        if (e.finding) h += '<section><h4 class="d-h mb-1">Finding</h4><p class="d-text">' + hlText(e.finding, t) + '</p></section>';
+                        if (e.affected.length) {
+                            h += '<section><div class="d-head"><h4 class="d-h">Affected elements (' + e.affected.length + ')</h4>' +
+                                copyBtn('sel', -1, 'Copy all', 'Copy all ' + e.affected.length + ' selectors') + '</div><ul class="sel-list">';
+                            e.affected.forEach((sel, i) => {
+                                h += '<li class="sel"><code>' + hlText(sel, t) + '</code>' + copyBtn('s', i, 'Copy', 'Copy selector ' + (i + 1)) + '</li>';
+                            });
+                            h += '</ul></section>';
+                        }
+                        if (e.code) {
+                            h += '<section><div class="d-head"><h4 class="d-h">Faulty code</h4>' + copyBtn('code', -1, 'Copy', 'Copy faulty code') +
+                                '</div><pre class="code">' + renderCode(e.code, t) + '</pre></section>';
+                        }
+                        if (e.correction) {
+                            h += '<section><div class="d-head"><h4 class="d-h">Expected correction</h4>' + copyBtn('fix', -1, 'Copy', 'Copy expected correction') +
+                                '</div><p class="d-text">' + hlText(e.correction, t) + '</p></section>';
+                        }
+                        if (e.markable) {
+                            const allLabel = this.allPromptLabel(e.critIdx, true);
+                            h += '<div class="flex flex-wrap gap-2">' +
+                                '<button type="button" class="btn js-bulk" data-crit="' + e.critIdx + '">' + esc(this.bulkBtnText(e.critIdx, true)) + '</button>' +
+                                '<button type="button" class="btn js-prompt" data-key="' + ek + '" data-label="Copy prompt" aria-label="' + esc('Copy prompt for criterion ' + e.number + ' on ' + e.path) + '">Copy prompt</button>' +
+                                '<button type="button" class="btn js-prompt-all" data-crit="' + e.critIdx + '" data-label="' + esc(allLabel) + '"' + (this.openCount(e.critIdx, true) ? '' : ' disabled') + '>' + esc(allLabel) + '</button>' +
+                                '</div>';
+                        }
+                        return h + '</div>';
+                    },
+                    rowNodes(k) {
+                        return document.querySelectorAll('#results [data-key="' + CSS.escape(k) + '"]');
+                    },
+                    // Push done / expanded state of the given keys (or of every rendered row) into the static row markup.
+                    syncRows(keys) {
+                        const rawDone = window.Alpine.raw(this.done);
+                        const rawExp = R.expanded;
+                        const apply = el => {
+                            const k = el.getAttribute('data-key');
+                            const e = A && A.byKey.get(k);
+                            if (!e) return;
+                            const isDone = e.markable && !!rawDone[k];
+                            if (el.classList.contains('row-line')) el.classList.toggle('is-done', isDone);
+                            else if (el.classList.contains('js-done')) el.checked = isDone;
+                            else if (el.classList.contains('js-entry-btn')) el.setAttribute('aria-expanded', rawExp[k] ? 'true' : 'false');
+                        };
+                        if (keys) keys.forEach(k => this.rowNodes(k).forEach(apply));
+                        else document.querySelectorAll('#results [data-key]').forEach(apply);
+                        document.querySelectorAll('#results .js-bulk').forEach(b => { b.textContent = this.bulkBtnText(Number(b.getAttribute('data-crit')), true); });
+                        document.querySelectorAll('#results .js-prompt-all').forEach(b => {
+                            const ci = Number(b.getAttribute('data-crit'));
+                            const label = this.allPromptLabel(ci, true);
+                            b.setAttribute('data-label', label);
+                            if (b.getAttribute('data-flashing') !== '1') b.textContent = label;
+                            b.disabled = !this.openCount(ci, true);
+                        });
+                    },
+                    onResultsClick(ev) {
+                        const btn = ev.target.closest && ev.target.closest('button');
+                        if (!btn) return;
+                        if (btn.classList.contains('js-entry-btn')) this.toggleEntry(btn.getAttribute('data-key'));
+                        else if (btn.classList.contains('js-copy')) this.copyFrom(btn);
+                        else if (btn.classList.contains('js-bulk')) this.toggleCriterion(Number(btn.getAttribute('data-crit')));
+                        else if (btn.classList.contains('js-prompt')) this.copyEntryPrompt(btn.getAttribute('data-key'), btn);
+                        else if (btn.classList.contains('js-prompt-all')) this.copyCriterionPrompt(Number(btn.getAttribute('data-crit')), btn);
+                    },
+                    // ---- agent prompts ------------------------------------------------------------
+                    openCount(ci, raw) {
+                        const keys = A ? A.critMarkable[ci] : [];
+                        const done = raw ? window.Alpine.raw(this.done) : this.done;
+                        let n = 0;
+                        for (const k of keys) if (!done[k]) n++;
+                        return n;
+                    },
+                    allPromptLabel(ci, raw) { return this.openCount(ci, raw) ? 'Copy prompt (all pages)' : 'Nothing left to fix'; },
+                    allPromptAria(ci) { return this.allPromptLabel(ci) + ' for criterion ' + A.criteria[ci].number; },
+                    async copyEntryPrompt(k, btn) {
+                        const e = A && A.byKey.get(k);
+                        if (!e) return false;
+                        if (!e.markable) { this.say('Prompts are available for non-compliant and to-verify entries only.'); return false; }
+                        return this.copy(buildEntryPrompt(A, e, this.promptContext), btn, 'Prompt copied: criterion ' + e.number + ' on ' + e.path + '.');
+                    },
+                    async copyCriterionPrompt(ci, btn) {
+                        if (!A) return false;
+                        const num = A.criteria[ci].number;
+                        const text = buildCriterionPrompt(A, ci, window.Alpine.raw(this.done), this.promptContext);
+                        if (!text) { this.say('Nothing left to fix for criterion ' + num + '.'); return false; }
+                        return this.copy(text, btn, 'Prompt copied: criterion ' + num + ', ' + plural(this.openCount(ci, true), 'open entry', 'open entries') + ' on all pages.');
+                    },
+                    async copyCriterionPromptFromHeader(ci) {
+                        const ok = await this.copyCriterionPrompt(ci, null);
+                        if (!ok) return;
+                        clearTimeout(R.promptFlashTimer);
+                        this.promptFlash = 'all-' + ci;
+                        R.promptFlashTimer = setTimeout(() => { this.promptFlash = ''; }, 1500);
+                    },
+                    openPromptSettings() { if (!this.$refs.promptSettings.open) this.$refs.promptSettings.showModal(); },
+                    resetPromptContext() {
+                        this.promptContext = DEFAULT_CONTEXT;
+                        this.say('Project context reset to its default value.');
+                    },
+                    copyFrom(btn) {
+                        const e = A.byKey.get(btn.getAttribute('data-key'));
+                        if (!e) return;
+                        const kind = btn.getAttribute('data-kind');
+                        const text = kind === 'sel' ? e.affected.join('\n')
+                            : kind === 's' ? e.affected[Number(btn.getAttribute('data-idx'))]
+                                : kind === 'code' ? e.code : e.correction;
+                        this.copy(text, btn);
+                    },
+                    onResultsChange(ev) {
+                        const cb = ev.target;
+                        if (cb && cb.classList && cb.classList.contains('js-done')) this.toggleDone(cb.getAttribute('data-key'), cb.checked);
+                    },
+                    doneAria(k) {
+                        const e = A.byKey.get(k);
+                        return 'Done: criterion ' + e.number + ' on ' + e.path;
+                    },
+                    groupTitleHtml(g) {
+                        const t = this.terms;
+                        if (g.kind === 'c') {
+                            const c = A.criteria[g.ref];
+                            return '<span class="g-num">' + hlText(c.number, t) + '</span><span class="g-title">' + hlText(c.title, t) + '</span><span class="g-topic">' + hlText(c.topic, t) + '</span>';
+                        }
+                        return '<span class="g-path">' + hlText(A.pages[g.ref].path, t) + '</span>';
+                    },
+                    groupMeta(g) {
+                        const parts = [plural(g.keys.length, 'entry', 'entries') + ' shown'];
+                        this.statusList.forEach(s => { if (g.counts[s.value]) parts.push(g.counts[s.value] + ' ' + s.label.toLowerCase()); });
+                        if (g.kind === 'c') parts.push('scope ' + A.scope[g.ref] + '/' + A.pages.length + ' pages');
+                        return parts.join(' · ');
+                    },
+                    groupProgress(g) {
+                        if (!g.mkeys.length) return '';
+                        let d = 0;
+                        for (const k of g.mkeys) if (this.done[k]) d++;
+                        return 'Done ' + d + '/' + g.mkeys.length;
+                    },
+                    groupDone(g) {
+                        if (!g.mkeys.length) return false;
+                        for (const k of g.mkeys) if (!this.done[k]) return false;
+                        return true;
+                    },
+                    groupLink(g) { return g.kind === 'c' ? this.officialUrl(g.ref) : A.pages[g.ref].href; },
+                    groupLinkLabel(g) {
+                        return g.kind === 'c'
+                            ? 'RGAA criterion ' + A.criteria[g.ref].number + ' on accessibilite.numerique.gouv.fr (opens in a new tab)'
+                            : 'Open ' + A.pages[g.ref].url + ' (opens in a new tab)';
+                    },
+                    get envText() {
+                        const env = this.meta && this.meta.environment;
+                        if (!env) return '';
+                        return Object.entries(env).map(([k, v]) => k + ': ' + (typeof v === 'object' ? JSON.stringify(v) : v)).join(' · ');
+                    },
+                    get donePct() { return this.snap.markable ? Math.round((this.stats.doneShown / this.snap.markable) * 100) : 0; },
+                    get doneText() { return fmt(this.stats.doneShown) + ' / ' + fmt(this.snap.markable) + ' (' + this.donePct + '%)'; },
+                    get resultText() {
+                        const isCrit = this.view === 'criterion';
+                        return plural(this.snap.total, 'entry', 'entries') + ' in ' + plural(this.snap.groups, isCrit ? 'criterion' : 'page', isCrit ? 'criteria' : 'pages');
+                    },
+
+                    // ---- copy ---------------------------------------------------------------------
+                    async copy(text, btn, okMsg) {
+                        const active = document.activeElement;
+                        let ok = false;
+                        try { await navigator.clipboard.writeText(text); ok = true; } catch (e) {
+                            try {
+                                const ta = document.createElement('textarea');
+                                ta.value = text;
+                                ta.setAttribute('readonly', '');
+                                ta.style.position = 'fixed';
+                                ta.style.opacity = '0';
+                                document.body.appendChild(ta);
+                                ta.select();
+                                ok = document.execCommand('copy');
+                                ta.remove();
+                            } catch (e2) { ok = false; }
+                            if (active && typeof active.focus === 'function') active.focus({ preventScroll: true });
+                        }
+                        if (btn) this.flashBtn(btn, ok);
+                        this.say(ok ? (okMsg || 'Copied to clipboard.') : 'Copy failed.');
+                        return ok;
+                    },
+                    flashBtn(btn, ok) {
+                        clearTimeout(btn._t);
+                        btn.setAttribute('data-flashing', '1');
+                        const isIcon = btn.classList.contains('row-prompt');
+                        if (isIcon) btn.innerHTML = ok ? ICON_CHECK : ICON_FAIL;
+                        else btn.textContent = ok ? 'Copied' : 'Failed';
+                        btn._t = setTimeout(() => {
+                            btn.removeAttribute('data-flashing');
+                            if (isIcon) btn.innerHTML = ICON_PROMPT;
+                            else btn.textContent = btn.getAttribute('data-label') || 'Copy';
+                        }, 1500);
+                    },
+
+                    // ---- theme, dialogs, drawer ------------------------------------------------------
+                    applyTheme(t, persist) {
+                        document.documentElement.setAttribute('data-theme', t);
+                        this.theme = t;
+                        if (persist) store.set(K_THEME, t);
+                    },
+                    toggleTheme() { this.applyTheme(this.theme === 'dark' ? 'light' : 'dark', true); },
+                    openHelp() { if (!this.$refs.help.open) this.$refs.help.showModal(); },
+                    openPurge() { if (!this.$refs.purge.open) this.$refs.purge.showModal(); },
+                    confirmPurge() {
+                        store.purgeAll();
+                        A = null;
+                        R.sig = null; R.F = null; R.base = null;
+                        this.dismissToast();
+                        this.loaded = false;
+                        this.groups = [];
+                        this.done = {};
+                        R.expanded = {};
+                        this.collapsed = {};
+                        this.meta = {};
+                        this.fileName = '';
+                        this.warn = '';
+                        this.error = '';
+                        this.drawer = false;
+                        this.promptContext = DEFAULT_CONTEXT;
+                        this.applyTheme(R.mqDark && R.mqDark.matches ? 'dark' : 'light', false);
+                        this.$refs.purge.close();
+                        this.say('All data stored by this viewer has been deleted.');
+                    },
+                    openDrawer() {
+                        this.drawer = true;
+                        this.$nextTick(() => { const q = document.getElementById('q'); if (q) q.focus(); });
+                    },
+                    closeDrawer() {
+                        if (!this.drawer) return;
+                        this.drawer = false;
+                        this.$nextTick(() => { const b = document.getElementById('filters-btn'); if (b && this.isMobile) b.focus(); });
+                    },
+                    focusSearch() {
+                        if (this.isMobile && !this.drawer) { this.openDrawer(); return; }
+                        const q = document.getElementById('q');
+                        if (q) { q.focus(); q.select(); }
+                    },
+                    onSearchEscape(ev) {
+                        if (this.filters.q || ev.target.value) {
+                            ev.target.value = '';
+                            this.filters.q = '';
+                            ev.target.dispatchEvent(new Event('input'));
+                        }
+                        else if (this.isMobile && this.drawer) this.closeDrawer();
+                        else ev.target.blur();
+                    },
+                    say(msg) {
+                        this.live = '';
+                        this.$nextTick(() => { this.live = msg; });
+                    },
+
+                    // ---- keyboard ------------------------------------------------------------------------
+                    activeRow() {
+                        const el = document.activeElement;
+                        return el && el.closest ? el.closest('#results li.row') : null;
+                    },
+                    activeKey() {
+                        const row = this.activeRow();
+                        const line = row && row.querySelector('.row-line[data-key]');
+                        return line ? line.getAttribute('data-key') : null;
+                    },
+                    focusEl(el) {
+                        if (!el) return;
+                        el.focus({ preventScroll: true });
+                        el.scrollIntoView({ block: 'nearest' });
+                    },
+                    moveEntry(dir) {
+                        const btns = [...document.querySelectorAll('#results .js-entry-btn')];
+                        if (!btns.length) return;
+                        const row = this.activeRow();
+                        let idx = row ? btns.indexOf(row.querySelector('.js-entry-btn')) : -1;
+                        if (idx === -1) {
+                            const section = document.activeElement && document.activeElement.closest ? document.activeElement.closest('#results section.group') : null;
+                            if (section) {
+                                const inside = btns.filter(b => section.contains(b));
+                                if (inside.length) { this.focusEl(dir > 0 ? inside[0] : btns[Math.max(0, btns.indexOf(inside[0]) - 1)]); return; }
+                                const after = btns.find(b => section.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+                                this.focusEl(dir > 0 ? (after || btns[btns.length - 1]) : btns[Math.max(0, (after ? btns.indexOf(after) : btns.length) - 1)]);
+                                return;
+                            }
+                            this.focusEl(dir > 0 ? btns[0] : btns[btns.length - 1]);
+                            return;
+                        }
+                        this.focusEl(btns[Math.max(0, Math.min(btns.length - 1, idx + dir))]);
+                    },
+                    moveGroup(dir) {
+                        const heads = [...document.querySelectorAll('#results .js-group-btn')];
+                        if (!heads.length) return;
+                        const section = document.activeElement && document.activeElement.closest ? document.activeElement.closest('#results section.group') : null;
+                        let idx = section ? heads.indexOf(section.querySelector('.js-group-btn')) : -1;
+                        const onHead = section && document.activeElement === section.querySelector('.js-group-btn');
+                        let target;
+                        if (idx === -1) target = dir > 0 ? 0 : heads.length - 1;
+                        else if (dir < 0 && !onHead) target = idx;
+                        else target = idx + dir;
+                        this.focusEl(heads[Math.max(0, Math.min(heads.length - 1, target))]);
+                    },
+                    onKey(ev) {
+                        if (ev.defaultPrevented || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+                        if (ev.key === 'Escape') {
+                            if (this.drawer && !document.querySelector('dialog[open]')) { ev.preventDefault(); this.closeDrawer(); }
+                            return;
+                        }
+                        const t = ev.target;
+                        const typing = t && (t.isContentEditable || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' ||
+                            (t.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'submit', 'reset', 'file'].includes(t.type)));
+                        if (typing || !this.loaded || document.querySelector('dialog[open]')) return;
+                        const k = ev.key;
+                        if (k === '/') { ev.preventDefault(); this.focusSearch(); }
+                        else if (k === '?') { ev.preventDefault(); this.openHelp(); }
+                        else if (k === 'v') { this.view = this.view === 'criterion' ? 'page' : 'criterion'; }
+                        else if (k === 'j') { ev.preventDefault(); this.moveEntry(1); }
+                        else if (k === 'k') { ev.preventDefault(); this.moveEntry(-1); }
+                        else if (k === 'J') { ev.preventDefault(); this.moveGroup(1); }
+                        else if (k === 'K') { ev.preventDefault(); this.moveGroup(-1); }
+                        else if (k === 'x') {
+                            const key = this.activeKey();
+                            if (key) { ev.preventDefault(); this.toggleDone(key); }
+                        } else if (k === 'X') {
+                            const key = this.activeKey();
+                            if (key) { ev.preventDefault(); this.toggleCriterion(A.byKey.get(key).critIdx); return; }
+                            const section = document.activeElement && document.activeElement.closest ? document.activeElement.closest('#results section.group') : null;
+                            if (section) {
+                                try { const g = window.Alpine.$data(section).g; if (g && g.kind === 'c') { ev.preventDefault(); this.toggleCriterion(g.ref); } } catch (e) { }
+                            }
+                        } else if (k === 'p') {
+                            const key = this.activeKey();
+                            if (key) {
+                                ev.preventDefault();
+                                this.copyEntryPrompt(key, document.querySelector('#results .row-line[data-key="' + CSS.escape(key) + '"] .js-prompt'));
+                            }
+                        } else if (k === 'P') {
+                            const key = this.activeKey();
+                            let ci = key ? A.byKey.get(key).critIdx : null;
+                            if (ci === null) {
+                                const section = document.activeElement && document.activeElement.closest ? document.activeElement.closest('#results section.group') : null;
+                                try { const g = section && window.Alpine.$data(section).g; if (g && g.kind === 'c') ci = g.ref; } catch (e) { }
+                            }
+                            if (ci !== null) { ev.preventDefault(); this.copyCriterionPromptFromHeader(ci); }
+                        } else if (k === 'o') {
+                            const key = this.activeKey();
+                            if (key) { ev.preventDefault(); this.toggleEntry(key); }
+                        } else if (k === '+' || k === '=') { ev.preventDefault(); this.setLevel(this.level + 1); }
+                        else if (k === '-') { ev.preventDefault(); this.setLevel(this.level - 1); }
+                    },
+                }));
+            });
+        })();
+    </script>
+</head>
+
+<body class="min-h-screen bg-canvas text-ink">
+    <div id="boot-msg" hidden
+        style="max-width:36rem;margin:15vh auto;padding:1.25rem;font:15px/1.5 system-ui,sans-serif;border:1px solid #c8c7bf;border-radius:.75rem;background:#fff;color:#161614">
+        <strong>RGAA Audit Viewer could not start.</strong><br>
+        It loads Alpine.js and Tailwind CSS from cdn.jsdelivr.net: an Internet connection is required. Check the
+        connection,
+        then reload the page.
+    </div>
+    <script>setTimeout(function () { if (!window.__rgaaViewerReady) { var m = document.getElementById('boot-msg'); if (m) m.hidden = false; } }, 5000);</script>
+    <div x-data="app" x-cloak @dragenter.window="onDragEnter($event)" @dragover.window.prevent="onDragOver($event)"
+        @dragleave.window="onDragLeave($event)" @drop.window.prevent="onDrop($event)">
+
+        <!-- ===================================================================== -->
+        <!-- Loader screen                                                          -->
+        <!-- ===================================================================== -->
+        <template x-if="!loaded">
+            <main class="grid min-h-screen place-items-center p-4">
+                <div class="w-full max-w-xl rounded-xl border border-line bg-surface p-6 shadow-sm">
+                    <div class="flex items-start justify-between gap-4">
+                        <h1 class="text-xl font-semibold">RGAA Audit Viewer</h1>
+                        <button type="button" class="btn-icon" @click="toggleTheme()"
+                            :aria-label="theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
+                            :title="theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'">
+                            <svg x-show="theme === 'dark'" class="size-5" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                                <circle cx="12" cy="12" r="4" />
+                                <path
+                                    d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+                            </svg>
+                            <svg x-show="theme !== 'dark'" class="size-5" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                aria-hidden="true">
+                                <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+                            </svg>
+                        </button>
+                    </div>
+                    <p class="mt-2 text-sm text-ink-2">Load an RGAA audit JSON file. It is read locally; the last loaded
+                        audit is
+                        kept, compressed, in this browser's storage.</p>
+                    <template x-if="busy">
+                        <p class="mt-6 rounded-lg border border-line bg-subtle p-6 text-center text-sm" role="status">
+                            Loading the
+                            audit&hellip;</p>
+                    </template>
+                    <template x-if="!busy">
+                        <label for="file-initial"
+                            class="mt-6 flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-line-strong bg-subtle p-8 text-center hover:bg-hover focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent"
+                            :class="dragging ? 'border-accent' : ''">
+                            <svg class="size-8 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M12 16V4M7 9l5-5 5 5" />
+                                <path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />
+                            </svg>
+                            <span class="text-sm font-medium">Drop the JSON file here or <span
+                                    class="text-accent underline">choose a
+                                    file</span></span>
+                            <span class="text-xs text-muted">Example: audit_2026-09-27.json</span>
+                            <input id="file-initial" type="file" accept=".json,application/json" class="sr-only"
+                                @change="onFileInput($event)">
+                        </label>
+                    </template>
+                    <template x-if="error">
+                        <p class="mt-4 rounded-md border border-danger bg-danger-soft px-3 py-2 text-sm text-danger"
+                            role="alert" x-text="error"></p>
+                    </template>
+                    <p class="mt-4 text-xs text-muted">Storage is tied to this HTML file's location: moving or renaming
+                        the file
+                        starts from an empty storage.</p>
+                </div>
+            </main>
+        </template>
+
+        <!-- ===================================================================== -->
+        <!-- Viewer                                                                 -->
+        <!-- ===================================================================== -->
+        <template x-if="loaded">
+            <div class="flex min-h-screen flex-col">
+                <a href="#results" class="skip-link">Skip to results</a>
+
+                <header class="border-b border-line bg-surface" :inert="isMobile && drawer">
+                    <div class="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-4 gap-y-2 px-4 pt-3">
+                        <div class="min-w-0">
+                            <h1 class="text-lg font-semibold leading-tight">RGAA Audit Viewer</h1>
+                            <p class="mt-0.5 text-sm text-ink-2">
+                                <span x-text="meta.reference"></span> audit of <time :datetime="meta.date"
+                                    x-text="meta.date"></time>
+                                &middot; <span x-text="pageCount + (pageCount === 1 ? ' page' : ' pages')"></span>
+                                &middot; <span class="font-mono text-[13px] [overflow-wrap:anywhere]"
+                                    x-text="fileName"></span>
+                            </p>
+                            <p class="text-xs text-muted" x-show="envText" x-text="'Environment: ' + envText"></p>
+                        </div>
+                        <div class="ml-auto flex flex-wrap items-center gap-2">
+                            <label
+                                class="btn focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent">
+                                <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M12 16V4M7 9l5-5 5 5" />
+                                    <path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />
+                                </svg>
+                                <span>Load another audit</span>
+                                <input type="file" accept=".json,application/json" class="sr-only"
+                                    @change="onFileInput($event)">
+                            </label>
+                            <button type="button" class="btn-icon" @click="toggleTheme()"
+                                :aria-label="theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
+                                :title="theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'">
+                                <svg x-show="theme === 'dark'" class="size-5" viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                                    <circle cx="12" cy="12" r="4" />
+                                    <path
+                                        d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+                                </svg>
+                                <svg x-show="theme !== 'dark'" class="size-5" viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+                                </svg>
+                            </button>
+                            <button type="button" class="btn-icon" @click="openPromptSettings()"
+                                aria-label="Prompt settings" title="Prompt settings">
+                                <svg class="size-5" viewBox="0 0 20 20" aria-hidden="true">
+                                    <rect x="2.5" y="3.5" width="15" height="13" rx="2" fill="none"
+                                        stroke="currentColor" stroke-width="1.6" />
+                                    <path d="M6 8l2.5 2L6 12M10.5 12.5H14" fill="none" stroke="currentColor"
+                                        stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                            </button>
+                            <button type="button" class="btn-icon" @click="openHelp()"
+                                aria-label="Keyboard shortcuts and help" title="Keyboard shortcuts and help (?)">
+                                <span class="text-base font-semibold" aria-hidden="true">?</span>
+                            </button>
+                            <button type="button" class="btn btn-danger" @click="openPurge()">Purge data</button>
+                        </div>
+                    </div>
+
+                    <template x-if="busy">
+                        <p class="mx-auto mt-2 max-w-[1600px] px-4 text-sm text-muted" role="status">Loading&hellip;</p>
+                    </template>
+                    <template x-if="error">
+                        <div class="mx-auto mt-2 flex max-w-[1600px] items-start gap-2 px-4" role="alert">
+                            <p class="flex-1 rounded-md border border-danger bg-danger-soft px-3 py-2 text-sm text-danger"
+                                x-text="error"></p>
+                            <button type="button" class="btn-sm mt-1.5" @click="error = ''">Dismiss</button>
+                        </div>
+                    </template>
+                    <template x-if="warn">
+                        <div class="mx-auto mt-2 flex max-w-[1600px] items-start gap-2 px-4">
+                            <p class="flex-1 rounded-md border border-line-strong bg-subtle px-3 py-2 text-sm text-ink-2"
+                                x-text="warn"></p>
+                            <button type="button" class="btn-sm mt-1.5" @click="warn = ''">Dismiss</button>
+                        </div>
+                    </template>
+
+                    <div class="mx-auto max-w-[1600px] px-4 pb-3 pt-3">
+                        <dl class="grid grid-cols-3 gap-2 lg:grid-cols-5">
+                            <div class="kpi">
+                                <dt>Entries shown</dt>
+                                <dd x-text="fmt(snap.total)"></dd>
+                            </div>
+                            <template x-for="s in statusList" :key="s.value">
+                                <div class="kpi">
+                                    <dt><span class="dot" :class="'dot-' + s.value" aria-hidden="true"></span><span
+                                            x-text="s.label"></span></dt>
+                                    <dd x-text="fmt(snap.byStatus[s.value] || 0)"></dd>
+                                </div>
+                            </template>
+                        </dl>
+                        <div class="mt-3">
+                            <div class="mb-1 flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
+                                <span id="meter-label" class="text-ink-2">Done, among markable entries shown</span>
+                                <span class="font-semibold tabular-nums" x-text="doneText"></span>
+                            </div>
+                            <div class="meter-track" role="progressbar" aria-labelledby="meter-label" aria-valuemin="0"
+                                :aria-valuemax="snap.markable" :aria-valuenow="stats.doneShown"
+                                :aria-valuetext="doneText">
+                                <div class="meter-fill" :style="'width:' + donePct + '%'"></div>
+                            </div>
+                        </div>
+                    </div>
+                </header>
+
+                <div class="mx-auto flex w-full max-w-[1600px] flex-1">
+                    <!-- Mobile drawer backdrop -->
+                    <div x-show="isMobile && drawer" class="fixed inset-0 z-30 bg-black/50" @click="closeDrawer()"
+                        aria-hidden="true"></div>
+
+                    <!-- Filters -->
+                    <aside id="filters"
+                        class="hidden border-r border-line bg-surface md:sticky md:top-0 md:block md:h-screen md:w-72 md:shrink-0 md:overflow-y-auto"
+                        :class="isMobile && drawer ? '!block fixed inset-y-0 left-0 z-40 w-[20rem] max-w-[88vw] overflow-y-auto shadow-2xl' : ''"
+                        :role="isMobile && drawer ? 'dialog' : false" :aria-modal="isMobile && drawer ? 'true' : false"
+                        aria-labelledby="filters-title">
+                        <div class="space-y-5 p-4">
+                            <div class="flex items-center justify-between gap-2">
+                                <h2 id="filters-title" class="text-base font-semibold">Filters</h2>
+                                <div class="flex items-center gap-2">
+                                    <button type="button" class="btn-sm" @click="resetFilters()">Reset</button>
+                                    <button type="button" class="btn-icon size-8 md:hidden" @click="closeDrawer()"
+                                        aria-label="Close filters">
+                                        <svg class="size-4" viewBox="0 0 20 20" aria-hidden="true">
+                                            <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div role="search">
+                                <label for="q" class="fs-title">Search</label>
+                                <input id="q" type="search" class="field mt-1.5" autocomplete="off" spellcheck="false"
+                                    placeholder="Number, title, finding, selector, code&hellip;"
+                                    x-model.debounce.200ms="filters.q"
+                                    @keydown.escape.stop.prevent="onSearchEscape($event)" aria-describedby="q-hint">
+                                <p id="q-hint" class="mt-1 text-xs text-muted">All words must match. Case and accents
+                                    are ignored.</p>
+                            </div>
+
+                            <fieldset>
+                                <legend class="sr-only">Status</legend>
+                                <div class="mb-1 flex items-center justify-between">
+                                    <span class="fs-title" aria-hidden="true">Status</span>
+                                    <span class="flex gap-1"><button type="button" class="btn-sm"
+                                            @click="setAll('status', true)"
+                                            aria-label="Select all statuses">All</button><button type="button"
+                                            class="btn-sm" @click="setAll('status', false)"
+                                            aria-label="Clear statuses">None</button></span>
+                                </div>
+                                <template x-for="s in statusList" :key="s.value">
+                                    <label class="facet">
+                                        <input type="checkbox" class="size-4" :value="s.value" x-model="filters.status">
+                                        <span class="dot" :class="'dot-' + s.value" aria-hidden="true"></span>
+                                        <span x-text="s.label"></span>
+                                        <span class="facet-count" x-text="facet('status', s.value)"></span>
+                                    </label>
+                                </template>
+                            </fieldset>
+
+                            <fieldset>
+                                <legend class="sr-only">Done state</legend>
+                                <div class="mb-1 flex items-center justify-between">
+                                    <span class="fs-title" aria-hidden="true">Done state</span>
+                                    <span class="flex gap-1"><button type="button" class="btn-sm"
+                                            @click="setAll('done', true)"
+                                            aria-label="Select all done states">All</button><button type="button"
+                                            class="btn-sm" @click="setAll('done', false)"
+                                            aria-label="Clear done states">None</button></span>
+                                </div>
+                                <template x-for="d in doneList" :key="d.value">
+                                    <label class="facet">
+                                        <input type="checkbox" class="size-4" :value="d.value" x-model="filters.done">
+                                        <span x-text="d.label"></span>
+                                        <span class="facet-count" x-text="facet('done', d.value)"></span>
+                                    </label>
+                                </template>
+                            </fieldset>
+
+                            <fieldset>
+                                <legend class="sr-only">Topic</legend>
+                                <div class="mb-1 flex items-center justify-between">
+                                    <span class="fs-title" aria-hidden="true">Topic</span>
+                                    <span class="flex gap-1"><button type="button" class="btn-sm"
+                                            @click="setAll('topic', true)"
+                                            aria-label="Select all topics">All</button><button type="button"
+                                            class="btn-sm" @click="setAll('topic', false)"
+                                            aria-label="Clear topics">None</button></span>
+                                </div>
+                                <template x-for="t in topicList" :key="t.value">
+                                    <label class="facet">
+                                        <input type="checkbox" class="size-4" :value="t.value" x-model="filters.topic">
+                                        <span x-text="t.label"></span>
+                                        <span class="facet-count" x-text="facet('topic', t.value)"></span>
+                                    </label>
+                                </template>
+                            </fieldset>
+
+                            <fieldset>
+                                <legend class="sr-only">Method</legend>
+                                <div class="mb-1 flex items-center justify-between">
+                                    <span class="fs-title" aria-hidden="true">Method</span>
+                                    <span class="flex gap-1"><button type="button" class="btn-sm"
+                                            @click="setAll('method', true)"
+                                            aria-label="Select all methods">All</button><button type="button"
+                                            class="btn-sm" @click="setAll('method', false)"
+                                            aria-label="Clear methods">None</button></span>
+                                </div>
+                                <template x-for="m in methodList" :key="m.value">
+                                    <label class="facet">
+                                        <input type="checkbox" class="size-4" :value="m.value" x-model="filters.method">
+                                        <span x-text="m.label"></span>
+                                        <span class="facet-count" x-text="facet('method', m.value)"></span>
+                                    </label>
+                                </template>
+                            </fieldset>
+
+                            <fieldset>
+                                <legend class="fs-title">Scope</legend>
+                                <p id="scope-hint" class="mt-1 text-xs text-muted">Number of pages where the criterion
+                                    is non-compliant
+                                    or to verify (0 to <span x-text="pageCount"></span>).</p>
+                                <div class="mt-2 flex items-end gap-2">
+                                    <label class="flex-1 text-xs text-ink-2">Min
+                                        <input type="number" inputmode="numeric" class="field mt-1" min="0"
+                                            :max="pageCount" step="1" x-model.number="filters.scopeMin"
+                                            aria-describedby="scope-hint">
+                                    </label>
+                                    <span class="pb-2 text-muted" aria-hidden="true">&ndash;</span>
+                                    <label class="flex-1 text-xs text-ink-2">Max
+                                        <input type="number" inputmode="numeric" class="field mt-1" min="0"
+                                            :max="pageCount" step="1" x-model.number="filters.scopeMax"
+                                            aria-describedby="scope-hint">
+                                    </label>
+                                </div>
+                                <p class="mt-1 text-xs text-danger" x-show="scopeBounds().min > scopeBounds().max">Min
+                                    is greater than
+                                    max: nothing can match.</p>
+                            </fieldset>
+
+                            <fieldset>
+                                <legend class="sr-only">Pages</legend>
+                                <div class="mb-1 flex items-center justify-between">
+                                    <span class="fs-title" aria-hidden="true">Pages</span>
+                                    <span class="flex gap-1"><button type="button" class="btn-sm"
+                                            @click="setAll('pages', true)"
+                                            aria-label="Select all pages">All</button><button type="button"
+                                            class="btn-sm" @click="setAll('pages', false)"
+                                            aria-label="Clear pages">None</button></span>
+                                </div>
+                                <template x-for="p in pageList" :key="p.id">
+                                    <label class="facet" :title="p.url">
+                                        <input type="checkbox" class="size-4 shrink-0" :value="p.id"
+                                            x-model="filters.pages">
+                                        <span class="min-w-0 truncate font-mono text-[13px]" x-text="p.path"></span>
+                                        <span class="facet-count" x-text="facet('pages', p.idx)"></span>
+                                    </label>
+                                </template>
+                            </fieldset>
+                        </div>
+                    </aside>
+
+                    <!-- Results -->
+                    <main id="main" class="min-w-0 flex-1" :inert="isMobile && drawer">
+                        <div class="sticky top-0 z-20 border-b border-line bg-canvas/95 backdrop-blur">
+                            <div class="flex flex-wrap items-center gap-2 px-4 py-2">
+                                <button type="button" id="filters-btn" class="btn md:hidden" @click="openDrawer()"
+                                    aria-controls="filters" :aria-expanded="drawer ? 'true' : 'false'">
+                                    <svg class="size-4" viewBox="0 0 20 20" aria-hidden="true">
+                                        <path d="M3 5h14M6 10h8M9 15h2" stroke="currentColor" stroke-width="2"
+                                            stroke-linecap="round" />
+                                    </svg>
+                                    Filters
+                                    <span class="rounded-full bg-accent px-1.5 text-xs text-accent-ink"
+                                        x-show="activeFilterCount" x-text="activeFilterCount"></span>
+                                </button>
+                                <fieldset class="seg">
+                                    <legend class="sr-only">View</legend>
+                                    <label class="seg-item"><input type="radio" name="view" value="criterion"
+                                            class="sr-only" x-model="view"><span class="seg-btn">By
+                                            criterion</span></label>
+                                    <label class="seg-item"><input type="radio" name="view" value="page" class="sr-only"
+                                            x-model="view"><span class="seg-btn">By page</span></label>
+                                </fieldset>
+                                <div class="seg" role="group" aria-label="Expand level">
+                                    <span class="seg-item"><button type="button" class="seg-btn" @click="setLevel(0)"
+                                            title="Show group headers only (-)">Collapse all</button></span>
+                                    <span class="seg-item"><button type="button" class="seg-btn" @click="setLevel(1)"
+                                            title="Open groups, collapse entries">Rows</button></span>
+                                    <span class="seg-item"><button type="button" class="seg-btn" @click="setLevel(2)"
+                                            title="Expand every entry (+)">Expand all</button></span>
+                                </div>
+                                <p class="ml-auto text-sm text-ink-2" x-text="resultText"></p>
+                            </div>
+                        </div>
+
+                        <div id="results" tabindex="-1" class="space-y-3 p-4 focus:outline-none"
+                            @click="onResultsClick($event)" @change="onResultsChange($event)">
+                            <h2 class="sr-only">Results</h2>
+
+                            <template x-if="!groups.length">
+                                <div
+                                    class="rounded-lg border border-dashed border-line-strong bg-surface p-8 text-center">
+                                    <p class="text-sm text-ink-2">No entry matches the current filters.</p>
+                                    <button type="button" class="btn mt-3" @click="resetFilters()">Reset
+                                        filters</button>
+                                </div>
+                            </template>
+
+                            <template x-for="g in groups" :key="g.id">
+                                <section class="group" :class="groupDone(g) ? 'is-done' : ''">
+                                    <div class="g-head">
+                                        <template x-if="hasBulk(g)">
+                                            <input type="checkbox" class="g-cb" :id="'bulk-' + g.id"
+                                                x-effect="syncBulk($el, g.ref)" @change="toggleCriterion(g.ref)"
+                                                :aria-label="bulkAria(g.ref)">
+                                        </template>
+                                        <template x-if="!hasBulk(g)">
+                                            <span class="g-cb-spacer" aria-hidden="true"></span>
+                                        </template>
+                                        <h3 class="min-w-0">
+                                            <button type="button" class="js-group-btn g-btn"
+                                                :aria-expanded="collapsed[g.id] ? 'false' : 'true'"
+                                                @click="toggleGroup(g.id)">
+                                                <svg class="chev" viewBox="0 0 20 20" aria-hidden="true">
+                                                    <path d="M5 8l5 5 5-5" fill="none" stroke="currentColor"
+                                                        stroke-width="2" stroke-linecap="round"
+                                                        stroke-linejoin="round" />
+                                                </svg>
+                                                <span class="g-text">
+                                                    <span class="g-titleline" x-html="groupTitleHtml(g)"></span>
+                                                    <span class="g-meta"><span x-text="groupMeta(g)"></span><template
+                                                            x-if="g.kind === 'p' && g.mkeys.length"><span
+                                                                x-text="' · ' + groupProgress(g)"></span></template></span>
+                                                </span>
+                                            </button>
+                                        </h3>
+                                        <div class="g-side">
+                                            <template x-if="hasBulk(g)">
+                                                <label class="g-bulk" :for="'bulk-' + g.id"
+                                                    x-text="bulkText(g.ref)"></label>
+                                            </template>
+                                            <template x-if="hasBulk(g)">
+                                                <button type="button" class="btn-sm whitespace-nowrap"
+                                                    :disabled="!openCount(g.ref)"
+                                                    @click="copyCriterionPromptFromHeader(g.ref)"
+                                                    :aria-label="allPromptAria(g.ref)"
+                                                    x-text="promptFlash === 'all-' + g.ref ? 'Copied' : allPromptLabel(g.ref)"></button>
+                                            </template>
+                                            <template x-if="groupLink(g)">
+                                                <a class="link text-xs" :href="groupLink(g)" target="_blank"
+                                                    rel="noopener noreferrer" :aria-label="groupLinkLabel(g)"
+                                                    :title="groupLinkLabel(g)">
+                                                    <span x-text="g.kind === 'c' ? 'RGAA' : 'Open'"></span>
+                                                    <svg class="size-3.5" viewBox="0 0 20 20" aria-hidden="true">
+                                                        <path d="M11 3h6v6M17 3l-8 8M8 5H4v11h11v-4" fill="none"
+                                                            stroke="currentColor" stroke-width="1.8"
+                                                            stroke-linecap="round" stroke-linejoin="round" />
+                                                    </svg>
+                                                </a>
+                                            </template>
+                                        </div>
+                                    </div>
+
+                                    <template x-if="!collapsed[g.id]">
+                                        <ul class="rows">
+                                            <template x-for="k in g.keys" :key="k">
+                                                <li class="row" x-html="rowHtml(k)"></li>
+                                            </template>
+                                        </ul>
+                                    </template>
+                                </section>
+                            </template>
+                        </div>
+                    </main>
+                </div>
+            </div>
+        </template>
+
+        <!-- Drop overlay -->
+        <div x-show="dragging && loaded"
+            class="pointer-events-none fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
+            <p
+                class="rounded-xl border-2 border-dashed border-white bg-black/60 px-8 py-6 text-lg font-semibold text-white">
+                Drop the audit JSON to load it</p>
+        </div>
+
+        <!-- Toast (undo) -->
+        <div class="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4" role="status"
+            aria-live="polite">
+            <template x-if="toast">
+                <div x-ref="toastBox"
+                    class="pointer-events-auto flex max-w-xl items-center gap-3 rounded-lg border border-line-strong bg-surface px-4 py-2.5 text-sm shadow-xl"
+                    @mouseenter="pauseToast()" @mouseleave="resumeToast()" @focusin="pauseToast()"
+                    @focusout="resumeToast()">
+                    <span x-text="toast.msg"></span>
+                    <button type="button" class="btn-sm" @click="undo()">Undo</button>
+                    <button type="button" class="btn-icon size-7" @click="dismissToast()"
+                        aria-label="Dismiss notification">
+                        <svg class="size-3.5" viewBox="0 0 20 20" aria-hidden="true">
+                            <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" />
+                        </svg>
+                    </button>
+                </div>
+            </template>
+        </div>
+
+        <!-- Screen-reader announcements -->
+        <div class="sr-only" role="status" aria-live="polite" x-text="live"></div>
+
+        <!-- Help dialog -->
+        <dialog x-ref="help" class="dlg" aria-labelledby="help-title">
+            <div class="max-h-[85vh] overflow-y-auto p-5">
+                <div class="flex items-start justify-between gap-4">
+                    <h2 id="help-title" class="text-lg font-semibold">Keyboard shortcuts</h2>
+                    <form method="dialog"><button class="btn-icon size-8" aria-label="Close help"><svg class="size-4"
+                                viewBox="0 0 20 20" aria-hidden="true">
+                                <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" />
+                            </svg></button></form>
+                </div>
+                <p class="mt-1 text-sm text-muted">Inactive while typing in a field.</p>
+                <table class="mt-3 w-full text-sm">
+                    <caption class="sr-only">Keyboard shortcuts</caption>
+                    <thead class="sr-only">
+                        <tr>
+                            <th scope="col">Keys</th>
+                            <th scope="col">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-line">
+                        <tr>
+                            <td class="py-1.5 pr-4 whitespace-nowrap"><kbd class="kbd">/</kbd></td>
+                            <td class="py-1.5">Focus the search field</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 pr-4 whitespace-nowrap"><kbd class="kbd">Esc</kbd></td>
+                            <td class="py-1.5">Clear the search; close the filters panel or a dialog</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 pr-4 whitespace-nowrap"><kbd class="kbd">v</kbd></td>
+                            <td class="py-1.5">Switch view: by criterion / by page</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 pr-4 whitespace-nowrap"><kbd class="kbd">j</kbd> <kbd class="kbd">k</kbd>
+                            </td>
+                            <td class="py-1.5">Next / previous entry</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 pr-4 whitespace-nowrap"><kbd class="kbd">J</kbd> <kbd class="kbd">K</kbd>
+                            </td>
+                            <td class="py-1.5">Next / previous group</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 pr-4 whitespace-nowrap"><kbd class="kbd">x</kbd></td>
+                            <td class="py-1.5">Mark / unmark the focused entry as done</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 pr-4 whitespace-nowrap"><kbd class="kbd">X</kbd></td>
+                            <td class="py-1.5">Mark / unmark the focused entry's criterion on all pages</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 pr-4 whitespace-nowrap"><kbd class="kbd">Enter</kbd> <kbd
+                                    class="kbd">o</kbd></td>
+                            <td class="py-1.5">Expand / collapse the focused entry</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 pr-4 whitespace-nowrap"><kbd class="kbd">+</kbd> <kbd class="kbd">-</kbd>
+                            </td>
+                            <td class="py-1.5">Expand more / collapse more (group headers, rows, full details)</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 pr-4 whitespace-nowrap"><kbd class="kbd">p</kbd></td>
+                            <td class="py-1.5">Copy the agent prompt of the focused entry</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 pr-4 whitespace-nowrap"><kbd class="kbd">P</kbd></td>
+                            <td class="py-1.5">Copy the agent prompt for all open entries of the focused criterion</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 pr-4 whitespace-nowrap"><kbd class="kbd">?</kbd></td>
+                            <td class="py-1.5">Show this help</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <h3 class="mt-5 text-sm font-semibold">Notes</h3>
+                <ul class="mt-1 list-disc space-y-1 pl-5 text-sm text-ink-2">
+                    <li>Search: every word must match, in the number, title, topic, page, finding, selectors, faulty
+                        code or
+                        expected correction.</li>
+                    <li>Entries marked as done stay in place until the list is refreshed (filter or view change,
+                        reload); they
+                        then move to the end of their group, and fully done groups move to the end of the list.</li>
+                    <li>The grouped action applies to every non-compliant and to-verify entry of the criterion, on all
+                        pages,
+                        whatever the filters.</li>
+                    <li>Copy prompt: Markdown prompt for a coding agent, with the project context (Prompt settings), the
+                        audit
+                        data and instructions. The all-pages prompt groups pages sharing the same faulty code and leaves
+                        out entries
+                        marked as done.</li>
+                    <li>Done states are stored per audit (audit date + page audit timestamps) in this browser. Storage
+                        is tied to
+                        this HTML file's location: moving or renaming the file starts from an empty storage.</li>
+                </ul>
+            </div>
+        </dialog>
+
+        <!-- Prompt settings dialog -->
+        <dialog x-ref="promptSettings" class="dlg" aria-labelledby="ps-title">
+            <div class="p-5">
+                <div class="flex items-start justify-between gap-4">
+                    <h2 id="ps-title" class="text-lg font-semibold">Prompt settings</h2>
+                    <form method="dialog"><button class="btn-icon size-8" aria-label="Close prompt settings"><svg
+                                class="size-4" viewBox="0 0 20 20" aria-hidden="true">
+                                <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" />
+                            </svg></button></form>
+                </div>
+                <label for="ps-context" class="mt-3 block text-sm font-medium">Project context</label>
+                <p id="ps-hint" class="mt-1 text-xs text-muted">Added to every copied prompt under &ldquo;Project
+                    context&rdquo;. Saved automatically in this browser. Leave empty to omit the section.</p>
+                <textarea id="ps-context" rows="7" spellcheck="false"
+                    class="field mt-2 font-mono text-[13px] leading-relaxed" x-model="promptContext"
+                    aria-describedby="ps-hint"></textarea>
+                <div class="mt-4 flex flex-wrap justify-between gap-2">
+                    <button type="button" class="btn" @click="resetPromptContext()">Reset to default</button>
+                    <form method="dialog"><button class="btn btn-primary">Done</button></form>
+                </div>
+            </div>
+        </dialog>
+
+        <!-- Purge dialog -->
+        <dialog x-ref="purge" class="dlg" aria-labelledby="purge-title" aria-describedby="purge-desc">
+            <form method="dialog" class="p-5">
+                <h2 id="purge-title" class="text-lg font-semibold">Purge all stored data?</h2>
+                <p id="purge-desc" class="mt-2 text-sm text-ink-2">This deletes the memorized audit, the done states of
+                    every
+                    audit and the preferences (theme, prompt context) stored by this viewer in this browser. It cannot
+                    be undone.
+                </p>
+                <div class="mt-5 flex justify-end gap-2">
+                    <button class="btn" value="cancel" autofocus>Cancel</button>
+                    <button type="button" class="btn btn-danger-solid" @click="confirmPurge()">Delete
+                        everything</button>
+                </div>
+            </form>
+        </dialog>
+    </div>
+</body>
+
+</html>
