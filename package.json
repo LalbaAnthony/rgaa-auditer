@@ -1,0 +1,11 @@
+{
+  "name": "rgaa-auditer",
+  "private": true,
+  "description": "RGAA accessibility audits run by Claude Code agents through the Playwright MCP server, with a viewer for the shared report.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}

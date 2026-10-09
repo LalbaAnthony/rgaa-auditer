@@ -208,7 +208,7 @@
             const NS = 'rgaaViewer:v1:';
             const K_AUDIT = 'audit';
             const K_THEME = 'theme';
-            const K_DONE = 'done:';
+            const K_PROGRESS = 'progress:';
             const K_PROMPT = 'promptContext';
             const OFFICIAL_BASE = 'https://accessibilite.numerique.gouv.fr/methode/criteres-et-tests/#';
             const TOAST_MS = 8000;
@@ -493,7 +493,10 @@
                 const pages = [];
                 const seenPath = new Map();
                 d.pages.forEach((p, i) => {
-                    if (!p || typeof p !== 'object' || !Array.isArray(p.criteria)) throw new Error('page #' + (i + 1) + ' has no "criteria" array');
+                    if (!p || typeof p !== 'object') throw new Error('page #' + (i + 1) + ' is not an object');
+                    // A page that could not be audited carries an error and no criteria.
+                    const error = p.error == null ? '' : String(p.error).trim();
+                    if (!Array.isArray(p.criteria) && !(error && p.criteria == null)) throw new Error('page #' + (i + 1) + ' has no "criteria" array');
                     const url = String(p.url == null ? '' : p.url);
                     let path = url;
                     try { const u = new URL(url); path = decodeURIComponent(u.pathname || '/') + u.search; } catch (e) { }
@@ -501,11 +504,16 @@
                     const count = (seenPath.get(path) || 0) + 1;
                     seenPath.set(path, count);
                     if (count > 1) path = path + ' (#' + count + ')';
-                    pages.push({ idx: i, id: String(i), url, href: safeUrl(url), path, audited_at: String(p.audited_at == null ? '' : p.audited_at) });
+                    const finalUrl = p.final_url == null || String(p.final_url) === url ? '' : String(p.final_url);
+                    pages.push({
+                        idx: i, id: String(i), url, href: safeUrl(url), path,
+                        audited_at: String(p.audited_at == null ? '' : p.audited_at),
+                        finalUrl, finalHref: safeUrl(finalUrl), error,
+                    });
                 });
 
                 const cmap = new Map();
-                d.pages.forEach(p => p.criteria.forEach(c => {
+                d.pages.forEach(p => (p.criteria || []).forEach(c => {
                     const num = String(c && c.number != null ? c.number : '').trim();
                     if (num && !cmap.has(num)) cmap.set(num, { number: num, topic: String(c.topic || 'Other'), title: String(c.title || '') });
                 }));
@@ -515,13 +523,14 @@
 
                 const entries = [];
                 const byKey = new Map();
+                const keyByDoneId = new Map();
                 const critMarkable = criteria.map(() => []);
                 const critPages = criteria.map(() => new Set());
                 const statusSeen = new Set(), methodSeen = new Set();
                 d.pages.forEach((p, pi) => {
                     const page = pages[pi];
                     const seenNum = new Set();
-                    p.criteria.forEach(c => {
+                    (p.criteria || []).forEach(c => {
                         const num = String(c && c.number != null ? c.number : '').trim();
                         if (!num || seenNum.has(num)) return;
                         seenNum.add(num);
@@ -531,6 +540,8 @@
                         const e = {
                             i: entries.length,
                             key: page.path + '|' + num,
+                            // Persistent identity of a done mark: one audit of one page (see readDone).
+                            doneId: (page.url || page.path) + '|' + page.audited_at + '|' + num,
                             pageIdx: pi,
                             critIdx: crit.idx,
                             number: num,
@@ -559,6 +570,7 @@
                         if (e.markable) { critMarkable[crit.idx].push(e.key); critPages[crit.idx].add(pi); }
                         entries.push(e);
                         byKey.set(e.key, e);
+                        keyByDoneId.set(e.doneId, e.key);
                     });
                 });
 
@@ -567,22 +579,25 @@
                 const statuses = STATUS_ORDER.filter(s => statusSeen.has(s)).concat([...statusSeen].filter(s => !STATUS_META[s]).sort());
                 const methods = Object.keys(METHOD_META).filter(m => methodSeen.has(m)).concat([...methodSeen].filter(m => !METHOD_META[m]).sort());
                 const date = String(d.date == null ? '' : d.date);
-                const identity = date + '|' + pages.map(p => p.audited_at).join('|');
+                // Storage partition of the done marks: the audit date and the audited sites. Pages added to the
+                // report later keep the same partition; each mark also carries its page audit timestamp (doneId).
+                const origins = [...new Set(pages.map(p => { try { return new URL(p.url).origin; } catch (e) { return ''; } }))].sort();
 
                 return {
                     meta: {
                         date,
                         reference: String(d.reference_framework || 'RGAA'),
-                        auditedPages: d.audited_pages != null ? d.audited_pages : pages.length,
                         environment: d.environment && typeof d.environment === 'object' ? d.environment : null,
                     },
                     pages,
+                    auditedCount: pages.filter(p => !p.error).length,
                     criteria,
                     entries,
                     byKey,
+                    keyByDoneId,
                     critMarkable: critMarkable.map(a => Object.freeze(a)),
                     scope: critPages.map(s => s.size),
-                    auditId: (date || 'nodate') + '-' + cyrb53(identity).toString(36),
+                    reportId: (date || 'nodate') + '-' + cyrb53(origins.join('|')).toString(36),
                     topics: topics.map(t => ({ value: t, label: t })),
                     statuses: statuses.map(s => ({ value: s, label: statusLabel(s) })),
                     methods: methods.map(m => ({ value: m, label: methodLabel(m) })),
@@ -605,6 +620,10 @@
                 return f + pad + s + pad + f;
             }
             const codeLang = code => (/^\s*</.test(code) ? 'html' : '');
+            function pageRef(A, e) {
+                const page = A.pages[e.pageIdx];
+                return (e.url || e.path) + (page.finalUrl ? ', redirected to ' + page.finalUrl : '');
+            }
             function auditLine(meta) {
                 const env = meta.environment
                     ? Object.entries(meta.environment).map(([k, v]) => k + ' ' + (typeof v === 'object' ? JSON.stringify(v) : v)).join(', ')
@@ -647,10 +666,10 @@
                     : [];
                 const L = promptHeader(A, e.number, '# ' + (isTv ? 'Evaluate' : 'Fix') + ' RGAA criterion ' + e.number + ' on ' + e.path + (isTv ? ' (fix only if confirmed)' : ''), context);
                 L.push('', '## Audit context', '');
-                L.push('- Page: ' + (e.url || e.path) + (page.audited_at ? ' (audited ' + page.audited_at + ')' : ''));
+                L.push('- Page: ' + pageRef(A, e) + (page.audited_at ? ' (audited ' + page.audited_at + ')' : ''));
                 L.push(auditLine(A.meta));
                 L.push('- Status: ' + statusLabel(e.status) + '; detection method: ' + methodLabel(e.method).toLowerCase());
-                L.push('- Scope: non-compliant or to verify on ' + scope + '/' + A.pages.length + ' audited pages' + (scope > 1 ? '; the cause may be shared with the other pages.' : '.'));
+                L.push('- Scope: non-compliant or to verify on ' + scope + '/' + A.auditedCount + ' audited pages' + (scope > 1 ? '; the cause may be shared with the other pages.' : '.'));
                 if (same.length) L.push('- The same faulty code was also captured on: ' + same.join(', ') + '.');
                 if (e.finding) L.push('', '## Finding', '', e.finding);
                 if (e.affected.length) L.push('', '## Affected elements', '', ...e.affected.map(x => '- ' + mdInline(x)));
@@ -680,7 +699,7 @@
                 const L = promptHeader(A, c.number, '# ' + verb + ' RGAA criterion ' + c.number + ' on all affected pages' + (mode === 'verify' ? ' (fix only if confirmed)' : ''), context);
                 L.push('', '## Audit context', '');
                 L.push(auditLine(A.meta));
-                L.push('- Scope: non-compliant or to verify on ' + A.scope[ci] + '/' + A.pages.length + ' audited pages.');
+                L.push('- Scope: non-compliant or to verify on ' + A.scope[ci] + '/' + A.auditedCount + ' audited pages.');
                 const parts = [];
                 if (nNc) parts.push(nNc + ' non-compliant');
                 if (nTv) parts.push(nTv + ' to verify');
@@ -695,7 +714,7 @@
                         ? (n > 1 ? 'identical faulty code on ' + n + ' pages' : E[0].path)
                         : (n > 1 ? 'identical finding on ' + n + ' pages' : E[0].path) + ', no faulty code captured';
                     L.push('', '### Issue ' + (i + 1) + ': ' + head, '', 'Pages:');
-                    E.forEach(e => L.push('- ' + (e.url || e.path) + ' (' + statusLabel(e.status) + ', ' + methodLabel(e.method).toLowerCase() + ')'));
+                    E.forEach(e => L.push('- ' + pageRef(A, e) + ' (' + statusLabel(e.status) + ', ' + methodLabel(e.method).toLowerCase() + ')'));
                     if (hasCode) L.push('', 'Faulty code, captured during the audit ("…" or "..." marks truncated parts):', '', mdFence(E[0].code, codeLang(E[0].code)));
                     const same = f => E.every(e => f(e) === f(E[0]));
                     const sharedSel = same(e => e.affected.join('\n'));
@@ -722,12 +741,16 @@
                 return L.join('\n') + '\n';
             }
 
+            // Pure functions, exposed for the Node.js tests (viewer/viewer.test.mjs).
+            window.RgaaViewer = Object.freeze({ parseAudit, buildEntryPrompt, buildCriterionPrompt, renderCode, findRanges });
+
             // ---------------------------------------------------------------------------
             // Alpine component
             // ---------------------------------------------------------------------------
             let A = null;              // parsed audit (kept outside Alpine's reactivity)
             const R = {                // non-reactive runtime state
                 sig: null, F: null, base: null, view: 'criterion', expanded: {}, gen: 0,
+                foreignDone: [],       // stored done marks of page audits absent from the loaded file, kept on save
                 toastTimer: null, toastLeft: 0, toastStart: 0, toastPaused: false, toastReturn: null,
                 mqDark: null, mqMobile: null,
             };
@@ -744,6 +767,8 @@
                     fileName: '',
                     meta: {},
                     pageCount: 0,
+                    auditedCount: 0,
+                    notAudited: [],
                     statusList: [],
                     doneList: DONE_META,
                     topicList: [],
@@ -818,6 +843,7 @@
                     async loadFile(file) {
                         this.busy = true;
                         this.error = '';
+                        this.warn = '';
                         let text;
                         try {
                             text = await file.text();
@@ -827,7 +853,6 @@
                             this.busy = false;
                             return;
                         }
-                        this.warn = '';
                         try {
                             const gz = await gzipToBase64(text);
                             const ok = store.set(K_AUDIT, JSON.stringify({ v: 1, name: file.name, savedAt: new Date().toISOString(), gz }));
@@ -847,10 +872,12 @@
                         this.meta = parsed.meta;
                         this.fileName = name;
                         this.pageCount = parsed.pages.length;
+                        this.auditedCount = parsed.auditedCount;
+                        this.notAudited = parsed.pages.filter(p => p.error).map(p => ({ id: p.id, path: p.path, url: p.url, error: p.error }));
                         this.statusList = parsed.statuses;
                         this.topicList = parsed.topics;
                         this.methodList = parsed.methods;
-                        this.pageList = parsed.pages.map(p => ({ id: p.id, idx: p.idx, path: p.path, url: p.url }));
+                        this.pageList = parsed.pages.map(p => ({ id: p.id, idx: p.idx, path: p.path, url: p.url, error: p.error }));
                         this.done = this.readDone();
                         R.expanded = {};
                         this.collapsed = {};
@@ -861,16 +888,28 @@
                         this.loaded = true;
                         this.refresh(true);
                     },
+                    // Done marks are stored as doneIds (page URL | page audit timestamp | criterion): adding pages to the
+                    // report keeps them, and a page audited again starts from no mark.
                     readDone() {
                         const out = {};
+                        R.foreignDone = [];
+                        let list = [];
                         try {
-                            const list = JSON.parse(store.get(K_DONE + A.auditId) || '[]');
-                            if (Array.isArray(list)) list.forEach(k => { const e = A.byKey.get(k); if (e && e.markable) out[k] = true; });
-                        } catch (e) { }
+                            list = JSON.parse(store.get(K_PROGRESS + A.reportId) || '[]');
+                        } catch (e) {
+                            this.warn = 'The stored progress of this audit could not be read: it starts from no done entry.';
+                        }
+                        if (Array.isArray(list)) list.forEach(id => {
+                            const k = A.keyByDoneId.get(id);
+                            if (k && A.byKey.get(k).markable) out[k] = true;
+                            else R.foreignDone.push(id);
+                        });
                         return out;
                     },
                     saveDone() {
-                        if (A) store.set(K_DONE + A.auditId, JSON.stringify(Object.keys(this.done)));
+                        if (!A) return;
+                        const ids = R.foreignDone.concat(Object.keys(this.done).map(k => A.byKey.get(k).doneId));
+                        if (!store.set(K_PROGRESS + A.reportId, JSON.stringify(ids))) this.warn = 'The progress could not be saved in the browser storage.';
                     },
 
                     // ---- drag and drop -----------------------------------------------------
@@ -897,7 +936,7 @@
                             method: A.methods.map(m => m.value),
                             pages: A.pages.map(p => p.id),
                             scopeMin: 0,
-                            scopeMax: A.pages.length,
+                            scopeMax: A.auditedCount,
                         };
                     },
                     resetFilters() { if (A) this.filters = this.defaultFilters(); },
@@ -919,11 +958,11 @@
                             if (f[k].length !== d[k].length || f[k].some(v => !d[k].includes(v))) n++;
                         });
                         if (String(f.q).trim()) n++;
-                        if (this.scopeBounds().min !== 0 || this.scopeBounds().max !== A.pages.length) n++;
+                        if (this.scopeBounds().min !== 0 || this.scopeBounds().max !== A.auditedCount) n++;
                         return n;
                     },
                     scopeBounds() {
-                        const n = A ? A.pages.length : 0;
+                        const n = A ? A.auditedCount : 0;
                         const rawMin = this.filters.scopeMin, rawMax = this.filters.scopeMax;
                         const min = rawMin === '' || rawMin == null || Number.isNaN(Number(rawMin)) ? 0 : Number(rawMin);
                         const max = rawMax === '' || rawMax == null || Number.isNaN(Number(rawMax)) ? n : Number(rawMax);
@@ -982,7 +1021,14 @@
                         const open = [], finished = [];
                         for (const gk of order) {
                             const list = buckets.get(gk);
-                            if (!list) continue;
+                            if (!list) {
+                                // By page: a page that could not be audited keeps a group of its own, without rows.
+                                const page = !isCrit && A.pages[gk];
+                                if (page && page.error && F.pages.has(gk) && F.terms.every(t => fold(page.path + ' ' + page.error).includes(t))) {
+                                    open.push(Object.freeze({ id: 'p' + gk + '-' + R.gen, kind: 'p', ref: gk, keys: Object.freeze([]), mkeys: Object.freeze([]), counts: Object.freeze({}), notAudited: true }));
+                                }
+                                continue;
+                            }
                             if (!isCrit) list.sort((a, b) => a.critIdx - b.critIdx);
                             const pending = [], closed = [], mkeys = [], counts = {};
                             let mk = 0, md = 0;
@@ -1185,7 +1231,7 @@
                     methodLabel(m) { return methodLabel(m); },
                     fmt(n) { return fmt(n); },
                     officialUrl(ci) { return OFFICIAL_BASE + encodeURI(A.criteria[ci].number); },
-                    scopeText(ci) { return A.scope[ci] + '/' + A.pages.length + ' pages'; },
+                    scopeText(ci) { return A.scope[ci] + '/' + A.auditedCount + ' pages'; },
                     rowHtml(k) {
                         // Tracked: terms only. The view comes from R.view (rows are rebuilt on a view switch anyway);
                         // done / expanded are read raw and synced imperatively (see syncRows).
@@ -1248,6 +1294,7 @@
                             '<span><span class="d-k">Topic</span> ' + esc(e.topic) + '</span>' +
                             (R.view === 'page' ? '<span><span class="d-k">Scope</span> ' + esc(this.scopeText(e.critIdx)) + '</span>' : '') +
                             (e.href ? '<a class="link" href="' + esc(e.href) + '" target="_blank" rel="noopener noreferrer" aria-label="Open ' + esc(e.url) + ' (opens in a new tab)"><span class="font-mono">' + esc(e.path) + '</span>' + ext + '</a>' : '') +
+                            this.redirectHtml(e.pageIdx, ext) +
                             '<a class="link" href="' + esc(this.officialUrl(e.critIdx)) + '" target="_blank" rel="noopener noreferrer" aria-label="RGAA criterion ' + esc(e.number) + ' on accessibilite.numerique.gouv.fr (opens in a new tab)">RGAA ' + esc(e.number) + ext + '</a>' +
                             '</div>';
                         if (e.finding) h += '<section><h4 class="d-h mb-1">Finding</h4><p class="d-text">' + hlText(e.finding, t) + '</p></section>';
@@ -1276,6 +1323,14 @@
                                 '</div>';
                         }
                         return h + '</div>';
+                    },
+                    redirectHtml(pageIdx, ext) {
+                        const page = A.pages[pageIdx];
+                        if (!page.finalUrl) return '';
+                        const target = page.finalHref
+                            ? '<a class="link" href="' + esc(page.finalHref) + '" target="_blank" rel="noopener noreferrer" aria-label="Open ' + esc(page.finalUrl) + ' (opens in a new tab)"><span class="font-mono [overflow-wrap:anywhere]">' + esc(page.finalUrl) + '</span>' + ext + '</a>'
+                            : '<span class="font-mono [overflow-wrap:anywhere]">' + esc(page.finalUrl) + '</span>';
+                        return '<span><span class="d-k">Redirected to</span> ' + target + '</span>';
                     },
                     rowNodes(k) {
                         return document.querySelectorAll('#results [data-key="' + CSS.escape(k) + '"]');
@@ -1374,9 +1429,10 @@
                         return '<span class="g-path">' + hlText(A.pages[g.ref].path, t) + '</span>';
                     },
                     groupMeta(g) {
+                        if (g.notAudited) return 'Not audited: ' + A.pages[g.ref].error;
                         const parts = [plural(g.keys.length, 'entry', 'entries') + ' shown'];
                         this.statusList.forEach(s => { if (g.counts[s.value]) parts.push(g.counts[s.value] + ' ' + s.label.toLowerCase()); });
-                        if (g.kind === 'c') parts.push('scope ' + A.scope[g.ref] + '/' + A.pages.length + ' pages');
+                        if (g.kind === 'c') parts.push('scope ' + A.scope[g.ref] + '/' + A.auditedCount + ' pages');
                         return parts.join(' · ');
                     },
                     groupProgress(g) {
@@ -1455,10 +1511,11 @@
                     confirmPurge() {
                         store.purgeAll();
                         A = null;
-                        R.sig = null; R.F = null; R.base = null;
+                        R.sig = null; R.F = null; R.base = null; R.foreignDone = [];
                         this.dismissToast();
                         this.loaded = false;
                         this.groups = [];
+                        this.notAudited = [];
                         this.done = {};
                         R.expanded = {};
                         this.collapsed = {};
@@ -1661,8 +1718,8 @@
                         <p class="mt-4 rounded-md border border-danger bg-danger-soft px-3 py-2 text-sm text-danger"
                             role="alert" x-text="error"></p>
                     </template>
-                    <p class="mt-4 text-xs text-muted">Storage is tied to this HTML file's location: moving or renaming
-                        the file starts from an empty storage.</p>
+                    <p class="mt-4 text-xs text-muted">Data is stored in this browser only. Opened from disk, every local
+                        copy of this viewer shares the same storage.</p>
                 </div>
             </main>
         </template>
@@ -1681,7 +1738,7 @@
                             <p class="mt-0.5 text-sm text-ink-2">
                                 <span x-text="meta.reference"></span> audit of <time :datetime="meta.date"
                                     x-text="meta.date"></time>
-                                &middot; <span x-text="pageCount + (pageCount === 1 ? ' page' : ' pages')"></span>
+                                &middot; <span x-text="pageCount + (pageCount === 1 ? ' page' : ' pages') + (notAudited.length ? ' (' + notAudited.length + ' not audited)' : '')"></span>
                                 &middot; <span class="font-mono text-[13px] [overflow-wrap:anywhere]"
                                     x-text="fileName"></span>
                             </p>
@@ -1746,6 +1803,22 @@
                             <p class="flex-1 rounded-md border border-line-strong bg-subtle px-3 py-2 text-sm text-ink-2"
                                 x-text="warn"></p>
                             <button type="button" class="btn-sm mt-1.5" @click="warn = ''">Dismiss</button>
+                        </div>
+                    </template>
+                    <template x-if="notAudited.length">
+                        <div class="mx-auto mt-2 max-w-[1600px] px-4">
+                            <section class="rounded-md border border-line-strong bg-subtle px-3 py-2 text-sm text-ink-2"
+                                aria-labelledby="not-audited-title">
+                                <h2 id="not-audited-title" class="font-semibold text-ink"
+                                    x-text="notAudited.length === 1 ? '1 page could not be audited' : notAudited.length + ' pages could not be audited'">
+                                </h2>
+                                <ul class="mt-1 list-disc space-y-0.5 pl-5">
+                                    <template x-for="p in notAudited" :key="p.id">
+                                        <li><span class="font-mono text-[13px] [overflow-wrap:anywhere]" x-text="p.path"
+                                                :title="p.url"></span>: <span x-text="p.error"></span></li>
+                                    </template>
+                                </ul>
+                            </section>
                         </div>
                     </template>
 
@@ -1892,18 +1965,18 @@
 
                             <fieldset>
                                 <legend class="fs-title">Scope</legend>
-                                <p id="scope-hint" class="mt-1 text-xs text-muted">Number of pages where the criterion
-                                    is non-compliant or to verify (0 to <span x-text="pageCount"></span>).</p>
+                                <p id="scope-hint" class="mt-1 text-xs text-muted">Number of audited pages where the
+                                    criterion is non-compliant or to verify (0 to <span x-text="auditedCount"></span>).</p>
                                 <div class="mt-2 flex items-end gap-2">
                                     <label class="flex-1 text-xs text-ink-2">Min
                                         <input type="number" inputmode="numeric" class="field mt-1" min="0"
-                                            :max="pageCount" step="1" x-model.number="filters.scopeMin"
+                                            :max="auditedCount" step="1" x-model.number="filters.scopeMin"
                                             aria-describedby="scope-hint">
                                     </label>
                                     <span class="pb-2 text-muted" aria-hidden="true">&ndash;</span>
                                     <label class="flex-1 text-xs text-ink-2">Max
                                         <input type="number" inputmode="numeric" class="field mt-1" min="0"
-                                            :max="pageCount" step="1" x-model.number="filters.scopeMax"
+                                            :max="auditedCount" step="1" x-model.number="filters.scopeMax"
                                             aria-describedby="scope-hint">
                                     </label>
                                 </div>
@@ -1926,6 +1999,9 @@
                                         <input type="checkbox" class="size-4 shrink-0" :value="p.id"
                                             x-model="filters.pages">
                                         <span class="min-w-0 truncate font-mono text-[13px]" x-text="p.path"></span>
+                                        <template x-if="p.error">
+                                            <span class="shrink-0 rounded border border-line px-1 text-xs text-muted">not audited</span>
+                                        </template>
                                         <span class="facet-count" x-text="facet('pages', p.idx)"></span>
                                     </label>
                                 </template>
@@ -2035,7 +2111,7 @@
                                         </div>
                                     </div>
 
-                                    <template x-if="!collapsed[g.id]">
+                                    <template x-if="!collapsed[g.id] && g.keys.length">
                                         <ul class="rows">
                                             <template x-for="k in g.keys" :key="k">
                                                 <li class="row" x-html="rowHtml(k)"></li>
@@ -2169,9 +2245,9 @@
                     <li>Copy prompt: Markdown prompt for a coding agent, with the project context (Prompt settings), the
                         audit data and instructions. The all-pages prompt groups pages sharing the same faulty code and
                         leaves out entries marked as done.</li>
-                    <li>Done states are stored per audit (audit date + page audit timestamps) in this browser. Storage
-                        is tied to this HTML file's location: moving or renaming the file starts from an empty storage.
-                    </li>
+                    <li>Done states are stored in this browser for each audited page (page URL + page audit
+                        timestamp): pages added to the report later keep the progress of the others. Opened from disk,
+                        every local copy of this viewer shares the same storage.</li>
                 </ul>
             </div>
         </dialog>

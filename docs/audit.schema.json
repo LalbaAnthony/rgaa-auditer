@@ -1,125 +1,415 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:rgaa-audit-viewer:audit:1",
-  "title": "RGAA audit",
-  "description": "Input format of RGAA Audit Viewer: the result of an RGAA audit, page by page and criterion by criterion. Extra properties are allowed and ignored by the viewer.",
+  "$id": "urn:rgaa-auditer:audit-report:2",
+  "title": "RGAA audit report",
+  "description": "Contract of the shared audit report written by `node scripts/audit-report.mjs merge` (see docs/audit-format.md). The script also enforces what this schema cannot express: every page lists each criterion of docs/rgaa-criteria.json exactly once, in that order, with its canonical topic, title and method; page URLs are unique; date matches the date at the end of the file name. The viewer accepts a looser input (see docs/viewer.md).",
   "type": "object",
-  "required": ["pages"],
+  "additionalProperties": false,
+  "required": [
+    "date",
+    "reference_framework",
+    "environment",
+    "pages"
+  ],
   "properties": {
     "date": {
       "type": "string",
-      "description": "Audit date, usually YYYY-MM-DD. Shown in the header and in agent prompts; part of the audit identity used to store done states.",
-      "examples": ["2026-01-15"]
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "Audit date, taken from the end of the report file name (audits/<name>_YYYY-MM-DD.json) when the first page is merged.",
+      "examples": [
+        "2026-01-15"
+      ]
     },
     "reference_framework": {
-      "type": "string",
-      "description": "Name and version of the reference framework. Shown in the header and in agent prompts. Defaults to \"RGAA\" when missing.",
-      "examples": ["RGAA 4.1"]
-    },
-    "audited_pages": {
-      "type": "integer",
-      "minimum": 0,
-      "description": "Informative. The viewer counts the pages itself from the \"pages\" array."
+      "const": "RGAA 4.1.2",
+      "description": "Reference framework of the canonical criteria (docs/rgaa-criteria.json)."
     },
     "environment": {
       "type": "object",
-      "description": "Free key/value pairs describing the audit environment (tools, browser versions). Shown in the header and in agent prompts.",
-      "additionalProperties": true,
-      "examples": [{ "browser": "Chromium 140", "tool": "my-audit-runner 1.2" }]
-    },
-    "summary": {
-      "type": "array",
-      "description": "Optional per-page summary. Ignored by the viewer, which recomputes every count from \"pages\".",
-      "items": {
-        "type": "object",
-        "properties": {
-          "page": { "type": "string" },
-          "non_compliant": { "type": "integer", "minimum": 0 },
-          "to_verify": { "type": "integer", "minimum": 0 },
-          "impacted_criteria": { "type": "array", "items": { "type": "string" } }
+      "additionalProperties": false,
+      "required": [
+        "playwright_mcp",
+        "chromium"
+      ],
+      "description": "Audit environment, written once from the first merged page and never modified afterwards.",
+      "properties": {
+        "playwright_mcp": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Version of @playwright/mcp pinned in audit.mcp.json, or \"unknown\".",
+          "examples": [
+            "0.0.83"
+          ]
+        },
+        "chromium": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Full browser version (navigator.userAgentData fullVersionList), or the major version from navigator.userAgent on a non-secure page.",
+          "examples": [
+            "155.0.8059.12"
+          ]
         }
       }
     },
     "pages": {
       "type": "array",
       "minItems": 1,
-      "description": "Audited pages, in the order they should be listed.",
-      "items": { "$ref": "#/$defs/page" }
+      "description": "Audited pages, in merge order (the order of the page list, except for pages skipped and audited later).",
+      "items": {
+        "$ref": "#/$defs/page"
+      }
     }
   },
   "$defs": {
     "page": {
       "type": "object",
-      "required": ["url", "criteria"],
+      "additionalProperties": false,
+      "required": [
+        "url",
+        "audited_at",
+        "criteria"
+      ],
       "properties": {
         "url": {
           "type": "string",
-          "description": "URL of the audited page. Its path and query string identify the page (the host is ignored); a value that is not a valid URL is used as is.",
-          "examples": ["https://www.example.com/contact"]
+          "pattern": "^https?://[^\\s'\"`\\\\]+$",
+          "description": "URL of the page, exactly as written in the page list of the prompt. Unique in the report.",
+          "examples": [
+            "https://www.example.com/contact"
+          ]
+        },
+        "final_url": {
+          "type": "string",
+          "pattern": "^https?://[^\\s'\"`\\\\]+$",
+          "description": "URL actually displayed after redirects, when it differs from url."
         },
         "audited_at": {
           "type": "string",
-          "description": "Timestamp of the page audit (ISO 8601 recommended). Shown in agent prompts; part of the audit identity used to store done states.",
-          "examples": ["2026-01-15T09:30:00Z"]
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?Z$",
+          "description": "UTC time at which the page was merged (ISO 8601).",
+          "examples": [
+            "2026-01-15T09:30:00Z"
+          ]
         },
         "http_status": {
           "type": "integer",
-          "description": "Informative, ignored by the viewer."
+          "minimum": 100,
+          "maximum": 599,
+          "description": "HTTP status of the main document after redirects. Required unless error is set."
+        },
+        "error": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why the page could not be audited (HTTP error, timeout, network error). A page with an error has no criteria.",
+          "examples": [
+            "HTTP 404 Not Found"
+          ]
         },
         "criteria": {
           "type": "array",
-          "description": "One result per RGAA criterion. Every page should list the same criteria.",
-          "items": { "$ref": "#/$defs/criterion" }
+          "items": {
+            "$ref": "#/$defs/criterion"
+          },
+          "description": "The 106 criteria in canonical order, or an empty array when error is set."
+        }
+      },
+      "if": {
+        "required": [
+          "error"
+        ]
+      },
+      "then": {
+        "properties": {
+          "criteria": {
+            "type": "array",
+            "maxItems": 0
+          }
+        }
+      },
+      "else": {
+        "required": [
+          "http_status"
+        ],
+        "properties": {
+          "criteria": {
+            "type": "array",
+            "minItems": 106,
+            "maxItems": 106
+          }
         }
       }
     },
     "criterion": {
       "type": "object",
-      "required": ["number", "status"],
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "topic",
+        "title",
+        "status",
+        "method"
+      ],
       "properties": {
         "number": {
-          "type": "string",
-          "pattern": "^[0-9]+(\\.[0-9]+)*$",
-          "description": "Criterion number. Must be a string so that \"3.10\" is not read as 3.1. Results without a number are skipped; a duplicated number on the same page keeps its first result.",
-          "examples": ["1.2", "10.11"]
+          "enum": [
+            "1.1",
+            "1.2",
+            "1.3",
+            "1.4",
+            "1.5",
+            "1.6",
+            "1.7",
+            "1.8",
+            "1.9",
+            "2.1",
+            "2.2",
+            "3.1",
+            "3.2",
+            "3.3",
+            "4.1",
+            "4.2",
+            "4.3",
+            "4.4",
+            "4.5",
+            "4.6",
+            "4.7",
+            "4.8",
+            "4.9",
+            "4.10",
+            "4.11",
+            "4.12",
+            "4.13",
+            "5.1",
+            "5.2",
+            "5.3",
+            "5.4",
+            "5.5",
+            "5.6",
+            "5.7",
+            "5.8",
+            "6.1",
+            "6.2",
+            "7.1",
+            "7.2",
+            "7.3",
+            "7.4",
+            "7.5",
+            "8.1",
+            "8.2",
+            "8.3",
+            "8.4",
+            "8.5",
+            "8.6",
+            "8.7",
+            "8.8",
+            "8.9",
+            "8.10",
+            "9.1",
+            "9.2",
+            "9.3",
+            "9.4",
+            "10.1",
+            "10.2",
+            "10.3",
+            "10.4",
+            "10.5",
+            "10.6",
+            "10.7",
+            "10.8",
+            "10.9",
+            "10.10",
+            "10.11",
+            "10.12",
+            "10.13",
+            "10.14",
+            "11.1",
+            "11.2",
+            "11.3",
+            "11.4",
+            "11.5",
+            "11.6",
+            "11.7",
+            "11.8",
+            "11.9",
+            "11.10",
+            "11.11",
+            "11.12",
+            "11.13",
+            "12.1",
+            "12.2",
+            "12.3",
+            "12.4",
+            "12.5",
+            "12.6",
+            "12.7",
+            "12.8",
+            "12.9",
+            "12.10",
+            "12.11",
+            "13.1",
+            "13.2",
+            "13.3",
+            "13.4",
+            "13.5",
+            "13.6",
+            "13.7",
+            "13.8",
+            "13.9",
+            "13.10",
+            "13.11",
+            "13.12"
+          ],
+          "description": "Criterion number, as a string (\"3.10\" is not \"3.1\")."
         },
         "topic": {
-          "type": "string",
-          "description": "Topic of the criterion. The first value found for a given number is used on every page.",
-          "examples": ["Images", "Colors"]
+          "enum": [
+            "Images",
+            "Frames",
+            "Colors",
+            "Multimedia",
+            "Tables",
+            "Links",
+            "Scripts",
+            "Mandatory elements",
+            "Structure",
+            "Presentation",
+            "Forms",
+            "Navigation",
+            "Consultation"
+          ],
+          "description": "Canonical topic of the criterion."
         },
         "title": {
           "type": "string",
-          "description": "Title of the criterion. The first value found for a given number is used on every page."
+          "minLength": 1,
+          "description": "Canonical short title of the criterion."
         },
         "status": {
-          "type": "string",
-          "enum": ["non_compliant", "to_verify", "compliant", "not_applicable"],
-          "description": "Result of the criterion on the page. Only \"non_compliant\" and \"to_verify\" entries can be marked as done and get agent prompts. The viewer also tolerates other values: they are displayed as is and cannot be marked."
+          "enum": [
+            "non_compliant",
+            "to_verify",
+            "compliant",
+            "not_applicable"
+          ],
+          "description": "Result of the criterion on the page."
         },
         "method": {
-          "type": "string",
-          "description": "How the result was obtained. Known values get a readable label; other values are displayed as is.",
-          "examples": ["automated", "agent_judgment", "manual_required"]
-        },
-        "finding": {
-          "type": "string",
-          "description": "What was observed on the page."
+          "enum": [
+            "automated",
+            "agent_judgment",
+            "manual_required"
+          ],
+          "description": "Canonical method of the criterion."
         },
         "affected_elements": {
           "type": "array",
-          "description": "CSS selectors of the elements concerned.",
-          "items": { "type": "string" }
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "CSS selectors of the elements concerned."
+        },
+        "finding": {
+          "type": "string",
+          "minLength": 1,
+          "description": "non_compliant: the defect observed. to_verify: what a human must check and why the agent could not conclude. compliant / not_applicable: optional short justification."
         },
         "faulty_code": {
           "type": "string",
-          "description": "Code captured on the page, usually an HTML fragment on one line; \"…\" or \"...\" marks truncated parts. Entries sharing the same faulty code are grouped in the all-pages agent prompt."
+          "minLength": 1,
+          "maxLength": 500,
+          "description": "Representative code captured on the page, usually an HTML fragment on one line; \"…\" marks cut parts."
         },
         "expected_correction": {
           "type": "string",
-          "description": "Recommended fix."
+          "minLength": 1,
+          "description": "Concrete action that resolves the defect."
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "manual_required"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "to_verify",
+                  "not_applicable"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "non_compliant"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "finding",
+              "expected_correction"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "to_verify"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "finding"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "compliant",
+                  "not_applicable"
+                ]
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "affected_elements"
+                  ]
+                },
+                {
+                  "required": [
+                    "faulty_code"
+                  ]
+                },
+                {
+                  "required": [
+                    "expected_correction"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
     }
   }
 }

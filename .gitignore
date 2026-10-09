@@ -1,7 +1,9 @@
 # Audits
 audits/*.json
-!audits/.gitkeep
 
-# Audit Run
+# Audit run
 audit-prompt.md
 audit.log
+.tmp/
+.playwright-mcp/
+*.tmp
