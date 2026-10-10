@@ -23,7 +23,7 @@ flowchart LR
 4. The loop waits for the next interval, then starts the next page, until every page is in the report.
 5. You load the report in `viewer/index.html`.
 
-The agents never see each other: each run starts from an empty context and shares nothing with the others but the report. Each run gets the prompt only (no auto memory, no `CLAUDE.md`, no claude.ai connectors) and only the Playwright MCP server. Each run waits up to 30 seconds for that server to connect before the agent starts (`MCP_CONNECT_TIMEOUT_MS`; Claude Code waits only 5 seconds by default, which a slow `npx` start exceeds). Runs are sequential.
+The agents never see each other: each run starts from an empty context and shares nothing with the others but the report. Each run gets the prompt only (no auto memory, no `CLAUDE.md`, no claude.ai connectors) and only the Playwright MCP server. Each run waits up to 30 seconds for that server to connect before the agent starts: by default, `claude -p` connects MCP servers in the background and starts the agent after at most 2 seconds, without the tools of a server that is not ready yet. `"alwaysLoad": true` in `audit.mcp.json` makes it wait for the Playwright server, and `MCP_CONNECT_TIMEOUT_MS`, set by the loop, raises that wait from 5 to 30 seconds. Runs are sequential.
 
 ## Requirements
 

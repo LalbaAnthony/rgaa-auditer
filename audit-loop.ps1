@@ -36,8 +36,9 @@ $env:CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1'
 $env:CLAUDE_CODE_DISABLE_CLAUDE_MDS  = '1'
 $env:ENABLE_CLAUDEAI_MCP_SERVERS     = 'false'
 
-# --- claude -p starts the first turn after 5 s even if an MCP server is still connecting; the browser tools are
-# then missing for the whole run. npx often needs longer: wait up to the 30 s startup timeout of the server ---
+# --- claude -p connects MCP servers in the background and starts the first turn after at most 2 s; a server
+# connected later never gives its tools to the run. The server of audit.mcp.json has "alwaysLoad": true, so the
+# first turn waits for it, up to this deadline (5 s by default, which a slow npx start exceeds) ---
 $env:MCP_CONNECT_TIMEOUT_MS = '30000'
 
 # --- UTF-8 for piping to native programs (PS 5.1 defaults to ASCII -> broken accents) ---

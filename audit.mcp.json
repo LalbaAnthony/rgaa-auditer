@@ -2,6 +2,7 @@
   "mcpServers": {
     "playwright": {
       "type": "stdio",
+      "alwaysLoad": true,
       "command": "npx",
       "args": [
         "--yes",

@@ -41,8 +41,10 @@ test('the loop runs the agents in a git-ignored directory one level below the ro
     assert.match(loop, /Invoke-Native -FilePath 'claude' .*-WorkingDirectory \$WorkDir/);
 });
 
-test('the MCP configuration pins @playwright/mcp and runs a headless, isolated Chromium', () => {
+test('the MCP configuration pins @playwright/mcp, loads it before the first turn and runs a headless, isolated Chromium', () => {
     const server = JSON.parse(read('audit.mcp.json')).mcpServers.playwright;
+    // Without it, claude -p may start the agent before the server is connected, without the browser tools
+    assert.equal(server.alwaysLoad, true);
     const pkg = server.args.find(a => a.startsWith('@playwright/mcp@'));
     assert.match(pkg, /^@playwright\/mcp@\d+\.\d+\.\d+$/);
     for (const flag of ['--headless', '--isolated']) assert.ok(server.args.includes(flag), `missing ${flag}`);
