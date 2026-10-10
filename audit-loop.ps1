@@ -31,6 +31,10 @@ $env:CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1'
 $env:CLAUDE_CODE_DISABLE_CLAUDE_MDS  = '1'
 $env:ENABLE_CLAUDEAI_MCP_SERVERS     = 'false'
 
+# --- claude -p starts the first turn after 5 s even if an MCP server is still connecting; the browser tools are
+# then missing for the whole run. npx often needs longer: wait up to the 30 s startup timeout of the server ---
+$env:MCP_CONNECT_TIMEOUT_MS = '30000'
+
 # --- UTF-8 for piping to native programs (PS 5.1 defaults to ASCII -> broken accents) ---
 $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
