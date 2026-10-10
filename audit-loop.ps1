@@ -10,7 +10,7 @@
 [CmdletBinding()]
 param(
     [ValidateRange(0, 1440)]
-    [int]$IntervalMinutes = 30,
+    [int]$IntervalMinutes = 1,
     [ValidateRange(1, 100)]
     [int]$MaxFailures = 2
 )

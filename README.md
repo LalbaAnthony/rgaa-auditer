@@ -60,14 +60,15 @@ The agents never see each other: each run starts from an empty context and share
 ## Run the audit
 
 ```powershell
-.\audit-loop.ps1                        # one page every 30 minutes
+.\audit-loop.ps1                        # at most one page per minute: in practice one after the other
+.\audit-loop.ps1 -IntervalMinutes 30    # one page every 30 minutes
 .\audit-loop.ps1 -IntervalMinutes 0     # pages one after the other, without waiting
 .\audit-loop.ps1 -MaxFailures 3         # tolerate more failed runs per page
 ```
 
 If script execution is disabled on the machine, run `powershell -ExecutionPolicy Bypass -File .\audit-loop.ps1`.
 
-- **Cadence**: `-IntervalMinutes` is the time between the starts of two runs; a long run shortens the next wait. The loop stops as soon as no page is left.
+- **Cadence**: `-IntervalMinutes` (1 by default) is the time between the starts of two runs; a long run shortens the next wait, so an audit run, which takes several minutes, is followed at once by the next one. A run that ends within seconds, such as a Claude Code failure, is followed by a wait of up to one minute; with `0`, the loop starts `claude` again at once, without end while a usage limit lasts. The loop stops as soon as no page is left.
 - **Outcome of a run**: after each run, the loop reads the report again.
   - The page is in the report: next page.
   - The agent answered `ENVIRONMENT_ERROR` (MCP server not loaded, browser missing, run parameters missing): the loop stops. Fix the environment, then start the loop again.
