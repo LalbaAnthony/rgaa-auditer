@@ -1,7 +1,7 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -340,6 +340,18 @@ describe('command line', () => {
         r = cli('validate', '--report', 'audits/cli_2026-10-09.json');
         assert.equal(r.status, 0, r.stderr);
         assert.match(r.stdout, /is valid: 2 page\(s\), 1 not audited\./);
+    });
+
+    test('merge runs from the working directory of the agents, with paths relative to it', () => {
+        const work = join(dir, '.tmp');
+        mkdirSync(work);
+        writeFileSync(join(work, 'page.json'), JSON.stringify(makeSubmission(URL_A)));
+        const r = spawnSync(process.execPath, [CLI, 'merge', '--report', '../audits/work_2026-10-09.json', '--url', URL_A, '--page', 'page.json'], { cwd: work, encoding: 'utf8' });
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /^Merged https:\/\/www\.example\.com\/ into \.\.\/audits\/work_2026-10-09\.json \(page 1, new report\)/);
+        const report = JSON.parse(readFileSync(join(dir, 'audits', 'work_2026-10-09.json'), 'utf8'));
+        assert.equal(report.date, '2026-10-09');
+        assert.deepEqual(report.pages.map(p => p.url), [URL_A]);
     });
 
     test('validate fails on a missing report', () => {

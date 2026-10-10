@@ -18,7 +18,7 @@ flowchart LR
 ```
 
 1. You copy `audit-prompt.example.md` to `audit-prompt.md` and write the report path and the page list in it.
-2. `audit-loop.ps1` asks `scripts/audit-report.mjs remaining` which pages are not in the report yet, then starts `claude -p` for the first of them. The agent receives the prompt followed by a run parameters section: target URL, report path and merge command.
+2. `audit-loop.ps1` asks `scripts/audit-report.mjs remaining` which pages are not in the report yet, then starts `claude -p` for the first of them. The agent receives the prompt followed by a run parameters section: target URL, report path, page file, pinned `@playwright/mcp` version and merge command.
 3. The agent audits that page only. It evaluates every criterion with the method fixed for it, writes its result to `.tmp/page.json` and runs the merge command. The merge validates the page against the contract and appends it to the report, which the first page creates.
 4. The loop waits for the next interval, then starts the next page, until every page is in the report.
 5. You load the report in `viewer/index.html`.
@@ -85,7 +85,9 @@ If script execution is disabled on the machine, run `powershell -ExecutionPolicy
 The loop runs `claude -p` with `--permission-mode dontAsk`: every tool call that is not explicitly allowed is denied without asking. Allowed:
 
 - the tools of the Playwright MCP server declared in `audit.mcp.json` (`--strict-mcp-config` ignores every other MCP server), except `browser_run_code_unsafe` and `browser_file_upload`;
-- among the built-in tools, only `Read`, `Write` and `Bash`, with writes allowed in `.tmp/` and the merge command allowed in Bash.
+- among the built-in tools, only `Read`, `Write` and `Bash`, with writes allowed to the page file only and the merge command allowed in Bash.
+
+The agents run in `.tmp/`, which the loop empties before each run; the run parameters give them paths relative to it (`page.json`, `../audits/…`). `.tmp/` is also the workspace root of the Playwright MCP server: the files an agent saves with a Playwright tool (screenshots, snapshots) land in it or in `.tmp/.playwright-mcp/`, and the server rejects a file path outside it, so the agents cannot write to the repository through the browser tools.
 
 The allow and deny rules of your own Claude Code settings still apply on top of this list. A permission denial appears in `audit.log`: it usually means a tool the agent needed is missing from the list.
 
@@ -117,7 +119,8 @@ node scripts/audit-report.mjs validate --report audits/<name>_YYYY-MM-DD.json
 | `viewer/index.html`                            | Viewer                                                                                     |
 | `scripts/*.test.mjs`, `viewer/viewer.test.mjs` | Tests                                                                                      |
 | `audits/`                                      | Reports (ignored by git)                                                                   |
-| `.tmp/`, `.playwright-mcp/`, `audit.log`       | Files written by the runs (ignored by git)                                                 |
+| `.tmp/`                                        | Working directory of the agents, emptied before each run (ignored by git)                  |
+| `audit.log`                                    | Log of the runs (ignored by git)                                                           |
 
 ## Development
 

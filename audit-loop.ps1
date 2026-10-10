@@ -24,7 +24,12 @@ $PromptFile   = 'audit-prompt.md'
 $LogFile      = 'audit.log'
 $McpConfig    = 'audit.mcp.json'
 $ReportScript = 'scripts/audit-report.mjs'
-$PageFile     = '.tmp/page.json'
+# Working directory of the agents, emptied before each run. It is the workspace root of the Playwright MCP
+# server: every file an agent names in a Playwright tool (screenshot, snapshot...) lands in it, and the server
+# rejects any path outside it. The agents see the paths below relative to it.
+$WorkDir           = '.tmp'
+$PageFile          = 'page.json'
+$AgentReportScript = "../$ReportScript"
 
 # --- Each run gets the prompt only: no auto memory, no CLAUDE.md (project or user), no claude.ai connectors ---
 $env:CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1'
@@ -44,27 +49,51 @@ $ClaudeArgs = @(
     '-p'
     '--output-format', 'json'
     '--permission-mode', 'dontAsk'
-    '--mcp-config', $McpConfig
+    '--mcp-config', (Join-Path $PSScriptRoot $McpConfig)
     '--strict-mcp-config'
     '--tools', 'Read,Write,Bash'
-    '--allowedTools', 'mcp__playwright', 'Edit(./.tmp/**)', "Bash(node $ReportScript merge *)"
+    '--allowedTools', 'mcp__playwright', "Edit(./$PageFile)", "Bash(node $AgentReportScript merge *)"
     '--disallowedTools', 'mcp__playwright__browser_run_code_unsafe', 'mcp__playwright__browser_file_upload'
     '--no-session-persistence'
 )
 
-function Write-Log([string]$Message) {
-    $line = '{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
-    Add-Content -LiteralPath $LogFile -Value $line -Encoding UTF8
-    Write-Host $line
+# Runs a file operation again when it fails, for a file briefly locked by another process (editor, antivirus,
+# indexer); rethrows the last error.
+function Invoke-WithRetry([scriptblock]$Action) {
+    $attempt = 0
+    while ($true) {
+        try {
+            & $Action
+            return
+        } catch {
+            $attempt++
+            if ($attempt -ge 5) { throw }
+            Start-Sleep -Milliseconds 300
+        }
+    }
 }
 
-# Runs a native program and returns its exit code, stdout and stderr separately.
+# A line that cannot be written to the log is still shown in the console: a locked log never stops the loop.
+function Write-Log([string]$Message) {
+    $line = '{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
+    Write-Host $line
+    try {
+        Invoke-WithRetry { Add-Content -LiteralPath $LogFile -Value $line -Encoding UTF8 }
+    } catch {
+        Write-Warning "Line above not written to ${LogFile}: $($_.Exception.Message)"
+    }
+}
+
+# Runs a native program in a directory and returns its exit code, stdout and stderr separately.
 function Invoke-Native {
     param(
         [Parameter(Mandatory)][string]$FilePath,
         [string[]]$Arguments = @(),
-        [string]$InputText
+        [string]$InputText,
+        [string]$WorkingDirectory = '.'
     )
+    # A native program starts in the current location of PowerShell
+    Push-Location -LiteralPath $WorkingDirectory
     # PS 5.1 wraps each stderr line of a native program in an ErrorRecord: collect them instead of stopping
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
@@ -77,6 +106,7 @@ function Invoke-Native {
         $exitCode = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $previous
+        Pop-Location
     }
     $stdout = @($output | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | ForEach-Object { [string]$_ })
     $stderr = @($output | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] } | ForEach-Object { $_.Exception.Message })
@@ -96,10 +126,29 @@ function Get-Field($Object, [string]$Name) {
     if ($null -ne $Object -and $Object.PSObject.Properties[$Name]) { $Object.$Name } else { $null }
 }
 
-# Section appended to the prompt. "Parametres" takes a grave accent, built from its code point so that this
-# file stays ASCII (PS 5.1 reads BOM-less scripts as ANSI).
-function Get-RunParameters([string]$Url, [string]$Report) {
+# Version of @playwright/mcp pinned in the MCP configuration, given to the agents: they cannot read the file
+# from their working directory.
+function Get-PlaywrightMcpVersion {
+    $config = Get-Content -LiteralPath $McpConfig -Raw -Encoding UTF8 | ConvertFrom-Json
+    $server = Get-Field (Get-Field $config 'mcpServers') 'playwright'
+    foreach ($arg in @(Get-Field $server 'args')) {
+        if ([string]$arg -match '^@playwright/mcp@(\d+\.\d+\.\d+)$') { return $Matches[1] }
+    }
+    throw "$McpConfig does not pin @playwright/mcp@<version> in mcpServers.playwright.args (see README.md)."
+}
+
+# Empties the working directory of the agents, so that no page file or Playwright output of an earlier run
+# is merged or read.
+function Reset-WorkDir {
+    [void](New-Item -ItemType Directory -Path $WorkDir -Force)
+    Invoke-WithRetry { Get-ChildItem -LiteralPath $WorkDir -Force | Remove-Item -Recurse -Force }
+}
+
+# Section appended to the prompt, with paths relative to the working directory of the agent. "Parametres" takes
+# a grave accent, built from its code point so that this file stays ASCII (PS 5.1 reads BOM-less scripts as ANSI).
+function Get-RunParameters([string]$Url, [string]$Report, [string]$McpVersion) {
     $heading = 'Param' + [char]0x00E8 + 'tres du run'
+    $agentReport = "../$Report"
     @(
         ''
         '---'
@@ -109,9 +158,10 @@ function Get-RunParameters([string]$Url, [string]$Report) {
         'Valeurs fournies par audit-loop.ps1 pour ce run uniquement.'
         ''
         "- URL cible : $Url"
-        "- Rapport : $Report"
+        "- Rapport : $agentReport"
         "- Fichier de page : $PageFile"
-        "- Commande de fusion : ``node $ReportScript merge --report '$Report' --url '$Url' --page $PageFile``"
+        "- Version de @playwright/mcp : $McpVersion"
+        "- Commande de fusion : ``node $AgentReportScript merge --report '$agentReport' --url '$Url' --page $PageFile``"
         ''
     ) -join "`n"
 }
@@ -165,9 +215,10 @@ try {
     foreach ($file in $PromptFile, $McpConfig, $ReportScript) {
         if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "$file not found (see README.md)." }
     }
+    $mcpVersion = Get-PlaywrightMcpVersion
     $state = Get-AuditState
-    Write-Log ("=== Loop started: report {0}, {1} of {2} page(s) left, interval {3} min, {4} failed run(s) allowed per page ===" -f
-        $state.report, @($state.remaining).Count, $state.total, $IntervalMinutes, $MaxFailures)
+    Write-Log ("=== Loop started: report {0}, {1} of {2} page(s) left, interval {3} min, {4} failed run(s) allowed per page, @playwright/mcp {5} ===" -f
+        $state.report, @($state.remaining).Count, $state.total, $IntervalMinutes, $MaxFailures, $mcpVersion)
 
     while ($true) {
         $pending = @(@($state.remaining) | Where-Object { -not $skipped.Contains($_) })
@@ -176,11 +227,9 @@ try {
         $start = Get-Date
         Write-Log "--- Run: $url ($($pending.Count) page(s) left)"
 
-        # A page file left by an earlier run must never be merged by mistake; the folder exists for the agent
-        if (Test-Path -LiteralPath $PageFile) { Remove-Item -LiteralPath $PageFile -Force }
-        [void](New-Item -ItemType Directory -Path (Split-Path -Parent $PageFile) -Force)
-        $prompt = (Get-Content -LiteralPath $PromptFile -Raw -Encoding UTF8) + (Get-RunParameters -Url $url -Report $state.report)
-        $outcome = Read-RunResult (Invoke-Native -FilePath 'claude' -Arguments $ClaudeArgs -InputText $prompt)
+        Reset-WorkDir
+        $prompt = (Get-Content -LiteralPath $PromptFile -Raw -Encoding UTF8) + (Get-RunParameters -Url $url -Report $state.report -McpVersion $mcpVersion)
+        $outcome = Read-RunResult (Invoke-Native -FilePath 'claude' -Arguments $ClaudeArgs -InputText $prompt -WorkingDirectory $WorkDir)
 
         $state = Get-AuditState
         if (@($state.remaining) -notcontains $url) {

@@ -34,13 +34,13 @@ Tu ne choisis pas la page à auditer : audit-loop.ps1 te la désigne dans la sec
 
 Avant toute autre action :
 
-1. Vérifie que la section « Paramètres du run » figure à la fin de ce prompt, avec l'URL cible, le rapport, le fichier de page et la commande de fusion.
+1. Vérifie que la section « Paramètres du run » figure à la fin de ce prompt, avec l'URL cible, le rapport, le fichier de page, la version de `@playwright/mcp` et la commande de fusion.
 2. Vérifie que les outils MCP Playwright sont disponibles (`browser_navigate`, `browser_snapshot`, `browser_evaluate`, `browser_take_screenshot`, `browser_press_key`, `browser_resize`, `browser_emulate_media`, `browser_close`…).
 3. Navigue vers `about:blank` pour valider que le navigateur se lance.
 
 Si l'une de ces vérifications échoue :
 - Arrête l'audit immédiatement et n'écris aucun fichier.
-- Commence ta réponse par une ligne `ENVIRONMENT_ERROR: <diagnostic>` : elle arrête audit-loop.ps1. Donne un diagnostic précis : paramètres du run absents, outil manquant, serveur MCP non chargé, navigateur absent (à installer avec `npx @playwright/mcp@<version> install-browser chromium`, la version étant celle épinglée dans `audit.mcp.json`), ou erreur de lancement.
+- Commence ta réponse par une ligne `ENVIRONMENT_ERROR: <diagnostic>` : elle arrête audit-loop.ps1. Donne un diagnostic précis : paramètres du run absents, outil manquant, serveur MCP non chargé, navigateur absent (à installer avec `npx @playwright/mcp@<version> install-browser chromium`, la version étant celle des « Paramètres du run »), ou erreur de lancement.
 
 N'utilise jamais `ENVIRONMENT_ERROR` pour un problème propre à la page (page inaccessible, lente ou en erreur) : ce cas est traité à l'étape 2.
 
@@ -258,7 +258,7 @@ Format du fichier de page :
 ```json
 {
   "environment": {
-    "playwright_mcp": "version pinned in audit.mcp.json",
+    "playwright_mcp": "@playwright/mcp version from the run parameters",
     "chromium": "full browser version"
   },
   "page": {
@@ -294,7 +294,7 @@ Format du fichier de page :
 
 Règles de remplissage :
 
-- `environment` : `playwright_mcp` est la version de `@playwright/mcp` épinglée dans `audit.mcp.json` (lis ce fichier ; `"unknown"` si tu ne la trouves pas). `chromium` est la version complète du navigateur, lue sur la page cible avec `browser_evaluate` : `(await navigator.userAgentData.getHighEntropyValues(['fullVersionList'])).fullVersionList`, entrée `Chromium` ; si cette API est indisponible (page non sécurisée), la version de `navigator.userAgent`, réduite à son numéro majeur. Seule la première page fusionnée l'enregistre dans le rapport ; il n'est jamais modifié ensuite.
+- `environment` : `playwright_mcp` est la version de `@playwright/mcp` donnée dans les « Paramètres du run ». `chromium` est la version complète du navigateur, lue sur la page cible avec `browser_evaluate` : `(await navigator.userAgentData.getHighEntropyValues(['fullVersionList'])).fullVersionList`, entrée `Chromium` ; si cette API est indisponible (page non sécurisée), la version de `navigator.userAgent`, réduite à son numéro majeur. Seule la première page fusionnée l'enregistre dans le rapport ; il n'est jamais modifié ensuite.
 - `url` est l'URL cible, exactement. `final_url` n'est présent qu'en cas de redirection (étape 2.2). `http_status` est le statut HTTP du document principal.
 - `criteria` contient les **106 critères**, une entrée par numéro, chacune avec `number` (une chaîne : `"3.10"` n'est pas `"3.1"`) et `status`. Ne fournis ni `topic`, ni `title`, ni `method` : le script les ajoute depuis `docs/rgaa-criteria.json`.
 - `non_compliant` : `finding` et `expected_correction` obligatoires. `affected_elements` (sélecteurs CSS) et `faulty_code` obligatoires dès qu'un élément de la page est en cause ; un défaut d'absence (pas de `main`, pas de `title`, pas de lien d'évitement) n'en a pas : décris-le dans `finding`.

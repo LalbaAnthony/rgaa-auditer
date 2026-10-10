@@ -64,7 +64,7 @@ The first page above is abbreviated: an audited page lists all 106 criteria.
 | `environment`         | object | Environment of the first merged page, never modified afterwards: `playwright_mcp` and `chromium`                     |
 | `pages`               | array  | At least one page, in merge order                                                                                     |
 
-`environment.playwright_mcp` is the version of `@playwright/mcp` pinned in `audit.mcp.json` (`unknown` if the agent could not read it). `environment.chromium` is the full browser version, read with `navigator.userAgentData.getHighEntropyValues(['fullVersionList'])` on the audited page; that API only exists in secure contexts (HTTPS or localhost), and `navigator.userAgent` only carries the major version (`155.0.0.0`), which is what an HTTP page gives. No other property is allowed.
+`environment.playwright_mcp` is the version of `@playwright/mcp` pinned in `audit.mcp.json`, which the loop gives the agent in the run parameters; `unknown` is also accepted. `environment.chromium` is the full browser version, read with `navigator.userAgentData.getHighEntropyValues(['fullVersionList'])` on the audited page; that API only exists in secure contexts (HTTPS or localhost), and `navigator.userAgent` only carries the major version (`155.0.0.0`), which is what an HTTP page gives. No other property is allowed.
 
 ### Page
 
@@ -122,10 +122,10 @@ A page that returns an HTTP error, times out or fails to load is merged with `er
 
 ## Page submission
 
-An agent writes its page to `.tmp/page.json`, then runs the merge command given by the loop:
+An agent works in `.tmp/`: it writes its page to `.tmp/page.json`, then runs the merge command given by the loop, with paths relative to `.tmp/`:
 
 ```sh
-node scripts/audit-report.mjs merge --report 'audits/<name>_YYYY-MM-DD.json' --url '<page URL>' --page .tmp/page.json
+node ../scripts/audit-report.mjs merge --report '../audits/<name>_YYYY-MM-DD.json' --url '<page URL>' --page page.json
 ```
 
 The page file holds the environment and the page, without `audited_at` and without the canonical fields:

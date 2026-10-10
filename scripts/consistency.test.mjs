@@ -1,5 +1,5 @@
 // Keeps the copies of the contract in sync with docs/rgaa-criteria.json: the audit grid of the prompt,
-// the JSON Schema and the MCP configuration referenced by the prompt and the loop.
+// the JSON Schema, the MCP configuration referenced by the prompt and the loop, and the paths the loop gives the agents.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -26,6 +26,19 @@ test('the JSON Schema enumerates the canonical numbers, topics, statuses and met
     assert.equal(schema.properties.reference_framework.const, catalog.referenceFramework);
     assert.equal(schema.$defs.page.else.properties.criteria.minItems, catalog.criteria.length);
     assert.equal(schema.$defs.page.else.properties.criteria.maxItems, catalog.criteria.length);
+});
+
+test('the loop runs the agents in a git-ignored directory one level below the root, with matching paths', () => {
+    const loop = read('audit-loop.ps1');
+    const value = name => new RegExp(`^\\$${name}\\s*=\\s*['"]([^'"]+)['"]`, 'm').exec(loop)?.[1];
+    const workDir = value('WorkDir');
+    // Playwright writes every file an agent names into this directory: it must never reach git
+    assert.match(workDir, /^[^/\\]+$/, 'the run parameters reach the root with "../"');
+    assert.ok(read('.gitignore').split(/\r?\n/).includes(`${workDir}/`), `${workDir}/ missing from .gitignore`);
+    assert.equal(value('AgentReportScript'), '../$ReportScript');
+    assert.match(loop, /'--allowedTools',.*"Edit\(\.\/\$PageFile\)", "Bash\(node \$AgentReportScript merge \*\)"/);
+    assert.match(loop, /``node \$AgentReportScript merge --report '\$agentReport' --url '\$Url' --page \$PageFile``/);
+    assert.match(loop, /Invoke-Native -FilePath 'claude' .*-WorkingDirectory \$WorkDir/);
 });
 
 test('the MCP configuration pins @playwright/mcp and runs a headless, isolated Chromium', () => {
