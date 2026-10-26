@@ -931,7 +931,8 @@
                         return {
                             q: '',
                             status: markable.length ? markable : statuses,
-                            done: DONE_META.map(d => d.value),
+                            // Done entries are hidden by default: the list shows what is left to fix.
+                            done: DONE_META.map(d => d.value).filter(v => v !== 'done'),
                             topic: A.topics.map(t => t.value),
                             method: A.methods.map(m => m.value),
                             pages: A.pages.map(p => p.id),
